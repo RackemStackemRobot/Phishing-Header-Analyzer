@@ -83,6 +83,13 @@ class AuthResultsParsingTests(unittest.TestCase):
         self.assertEqual([r.header_index for r in results], [0, 1])
         self.assertEqual(results[1].authserv_id, "forged.example")
 
+    def test_quoted_values_are_unquoted(self):
+        results = parse_authentication_results([
+            'mx.google.com; spf=pass smtp.mailfrom="bounce+x@recruiter.example"; dkim=pass header.b="ab/cd"'
+        ])
+        self.assertEqual(results[0].properties["smtp.mailfrom"], "bounce+x@recruiter.example")
+        self.assertEqual(results[1].properties["header.b"], "ab/cd")
+
     def test_arc_and_unknown_tokens(self):
         results = parse_authentication_results(["mx.example; arc=pass; garbage; dkim=fail header.d=x.example"])
         self.assertEqual([(r.method, r.result) for r in results], [("arc", "pass"), ("dkim", "fail")])
@@ -90,3 +97,4 @@ class AuthResultsParsingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
