@@ -66,6 +66,8 @@ class ParsedHeaders:
     attached_originals: list[bytes] = field(default_factory=list)   # emails attached to this one
     headers_lost: bool = False          # True for an original rebuilt from an inline forward
     forward: ForwardContext | None = None
+    raw: bytes = b""                    # the message as received, for attaching to abuse reports
+    live: object | None = None          # LiveResults when --live ran
     body: BodyInfo | None = None                              # None = body not inspected
 
 
@@ -228,6 +230,7 @@ def parse_bytes(data: bytes, source: str = "<bytes>", inspect_body: bool = False
                               + (msg.get_all("Delivered-To") or [])),
         body=extract(data) if inspect_body else None,
         attached_originals=attached_originals(data),
+        raw=data,
     )
 
 

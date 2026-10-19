@@ -84,6 +84,15 @@ ACTIONS = {
     "FORWARD-SUSPECTED": (
         "Re-run and answer y at the prompt (or pass --inspect-body) to find the original sender, "
         "or get the original forwarded as an attachment."),
+    "DOMAIN-NEWLY-REGISTERED": (
+        "Treat links and replies to these recently registered domains as high risk, and block "
+        "them at the mail gateway and web proxy:"),
+    "DOMAIN-REGISTRAR-ABUSE": (
+        "If this message is malicious, report the domains to their registrars, attaching the "
+        "original .eml (--abuse-reports can draft these):"),
+    "NETWORK-ABUSE": (
+        "If this message is malicious, report the sending server to its network operator, "
+        "attaching the original .eml (--abuse-reports can draft these):"),
     "BULK-MAIL-SERVICE": (
         "If this message is unwanted or malicious, report the sending account to the bulk mail "
         "service that delivered it, attaching the original .eml so they can identify the account. "
@@ -100,6 +109,9 @@ _SUBJECTS = {
     "LINK-TEXT-MISMATCH": lambda ev: [link["goes_to"] for link in ev.get("links", [])],
     "LINK-IP-LITERAL": lambda ev: ev.get("ips", []),
     "BULK-MAIL-SERVICE": lambda ev: [f"{ev['service']}: {ev['abuse_contact']}"],
+    "DOMAIN-NEWLY-REGISTERED": lambda ev: [f"{ev['domain']} (registered {ev['registered']})"],
+    "DOMAIN-REGISTRAR-ABUSE": lambda ev: ev.get("contacts", []),
+    "NETWORK-ABUSE": lambda ev: ev.get("contacts", []),
 }
 
 
@@ -158,19 +170,30 @@ def _body_section(parsed: ParsedHeaders) -> dict:
 
 
 def build_report(parsed: ParsedHeaders, config: Config | None = None,
-                 analyzed_at: datetime | None = None) -> dict:
+                 analyzed_at: datetime | None = None, live: bool = False, rdap=None) -> dict:
     """Run every check and assemble the full report as a plain dict.
 
     analyzed_at is optional so the same input can produce byte-identical output.
+    Nothing touches the network unless live=True.
     """
+    return analyze_message(parsed, config, analyzed_at, live, rdap)[0]
+
+
+def analyze_message(parsed: ParsedHeaders, config: Config | None = None,
+                    analyzed_at: datetime | None = None, live: bool = False,
+                    rdap=None) -> tuple[dict, ParsedHeaders]:
+    """The report, plus the message it describes (the forwarded original, when there is one)."""
     config = config or Config()
     parsed = resolve(parsed)   # analyze the forwarded original, not the forward, when there is one
+    if live:
+        from .live import run_lookups   # imported only when asked, so default runs load no network code
+        parsed.live = run_lookups(parsed, config, rdap=rdap)
     findings = sorted(run_all(parsed, config),
                       key=lambda f: (SEVERITY_ORDER[f.severity], -f.points, f.check_id))
     risk = score(findings)
     trusted, basis = trusted_results(parsed, config)
 
-    return {
+    report = {
         "tool": {"name": "phishing-header-analyzer", "version": __version__},
         "source": parsed.source,
         "analyzed_at": analyzed_at.astimezone(timezone.utc).isoformat() if analyzed_at else None,
@@ -201,10 +224,13 @@ def build_report(parsed: ParsedHeaders, config: Config | None = None,
             for h in parsed.hops
         ],
         "body": _body_section(parsed),
+        "live": asdict(parsed.live) if parsed.live is not None else None,
+        "headers_lost": parsed.headers_lost,
         "findings": [asdict(f) for f in findings],
         "parse_notes": parsed.parse_notes,
         "notes": NOTES,
     }
+    return report, parsed
 
 
 def analyze(parsed: ParsedHeaders, config: Config | None = None,
@@ -372,11 +398,17 @@ def to_markdown(report: dict, do_defang: bool = True) -> str:
         add("No findings.")
     add("")
 
+    lost = report.get("headers_lost")
     add("## Authentication")
     add("")
-    add(f"Trust basis: {a['trust_basis']}.")
+    if lost:
+        add("Not available: the original's authentication results were lost when it was forwarded inline.")
+    else:
+        add(f"Trust basis: {a['trust_basis']}.")
     add("")
-    if a["trusted_results"]:
+    if lost:
+        pass
+    elif a["trusted_results"]:
         add("| Method | Result | Recorded by | Details |")
         add("| --- | --- | --- | --- |")
         for res in a["trusted_results"]:
@@ -411,9 +443,44 @@ def to_markdown(report: dict, do_defang: bool = True) -> str:
             add("No links found.")
     add("")
 
+    live = report.get("live")
+    add("## Live Lookups (RDAP)")
+    add("")
+    if live is None:
+        add("Not run. Pass `--live` to look up domain registration dates and abuse contacts. "
+            "Queries go to public registries, never to the sender's own servers.")
+    else:
+        if live["domains"]:
+            add("| Domain | Registered | Age (days) | Registrar | Abuse contact |")
+            add("| --- | --- | --- | --- | --- |")
+            for d in live["domains"]:
+                if d["error"]:
+                    add(f"| {c(d['domain'])} | lookup failed: {c(d['error'])} | - | - | - |")
+                else:
+                    add(f"| {c(d['domain'])} | {c(d['registered'])} | {c(d['age_days'])} | "
+                        f"{c(d['registrar'])} | {c(d['abuse_email'])} |")
+            add("")
+        if live["ips"]:
+            add("| IP | Network | Organization | Country | Abuse contact |")
+            add("| --- | --- | --- | --- | --- |")
+            for i in live["ips"]:
+                if i["error"]:
+                    add(f"| {c(i['ip'])} | lookup failed: {c(i['error'])} | - | - | - |")
+                else:
+                    add(f"| {c(i['ip'])} | {c(i['network'])} | {c(i['org'])} | {c(i['country'])} | "
+                        f"{c(i['abuse_email'])} |")
+            add("")
+        for note in live["notes"]:
+            add(f"- {c(note)}")
+        if not live["domains"] and not live["ips"] and not live["notes"]:
+            add("Nothing to look up.")
+    add("")
+
     add("## Received Chain (origin first)")
     add("")
-    if report["received_chain"]:
+    if lost:
+        add("Not available: the original's delivery path was lost when it was forwarded inline.")
+    elif report["received_chain"]:
         add("| Hop | From | IP | By | Protocol | Time (UTC) | Delay |")
         add("| --- | --- | --- | --- | --- | --- | --- |")
         for h in report["received_chain"]:

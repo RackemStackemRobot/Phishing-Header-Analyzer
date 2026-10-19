@@ -71,6 +71,7 @@ def resolve(parsed: ParsedHeaders) -> ParsedHeaders:
             raw_headers={},
             body=parsed.body,
             headers_lost=True,
+            raw=parsed.raw,     # the original's bytes are gone; the forward is the best evidence left
             forward=ForwardContext(
                 kind="inline",
                 forwarded_by=_addr_text(parsed.from_),

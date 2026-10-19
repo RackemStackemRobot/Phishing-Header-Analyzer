@@ -63,6 +63,15 @@ It's a single keypress; no Enter needed. Anything typed before the question appe
 
 To skip the question, pass `--inspect-body` or `--headers-only`. Scripts, scheduled jobs, and piped input (`-`) are never prompted and run headers-only unless `--inspect-body` is given.
 
+## Full investigation in one command
+
+```bash
+phishing-header-analyzer message.eml --config my-org.json --inspect-body --live \
+    --format md --out report.md --abuse-reports reports
+```
+
+That writes the report to `report.md` and draft abuse reports into the `reports` folder. Open `reports/README.txt` for what to send where. On Windows PowerShell, put it all on one line (or end each line with a backtick instead of a backslash).
+
 ## Options
 
 | Option | What it does |
@@ -72,6 +81,8 @@ To skip the question, pass `--inspect-body` or `--headers-only`. Scripts, schedu
 | `--config PATH` | Load settings from a JSON file (see below). |
 | `--inspect-body` | Also inspect the message body, without asking. |
 | `--headers-only` | Analyze headers only, without asking. |
+| `--live` | Look up domain registration dates and abuse contacts via RDAP. Needs internet access; queries public registries only. |
+| `--abuse-reports DIR` | Write draft abuse reports into `DIR`. Nothing is sent. Combine with `--live` to include registrars and network operators. |
 | `--no-defang` | Leave domains, IPs, and URLs clickable in Markdown output. |
 | `--no-timestamp` | Leave out the analysis time so repeat runs give identical output. |
 | `--fail-on LEVEL` | Exit with code 3 if the risk is at or above `low`, `medium`, or `high`. |

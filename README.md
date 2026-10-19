@@ -6,7 +6,7 @@ Give it a saved `.eml` file or a text file of raw headers. It parses the authent
 
 This tool is designed to be safe by default:
 
-- It works fully offline. It makes no DNS queries or network requests.
+- It works fully offline by default. The only network access is the opt-in `--live` mode, which queries public registries, never the sender's servers.
 - It never opens links or attachments in the message.
 - It reads the message body only if you say yes (see Body inspection).
 - It does not upload data anywhere.
@@ -75,13 +75,37 @@ With body inspection on, it also checks:
 How it stays safe:
 
 - Only text and HTML parts are read. Attachments are skipped, never opened.
-- HTML is read as text. Nothing is rendered, no scripts run, no images load, and **no link is ever visited**. The tool contains no networking code, and a test blocks all network access during analysis to prove it on every commit.
+- HTML is read as text. Nothing is rendered, no scripts run, no images load, and **no link is ever visited**. Body inspection contains no networking code, and tests block all network access during analysis to prove that default runs make no connections, on every commit.
 - Reports contain link **domains** only, never full URLs. Phishing URLs often carry per-recipient tracking tokens; leaving them out means no one can click one from a ticket and confirm to the attacker that the target is live.
 - Body text is capped at 5 million characters.
 
+### Live lookups (`--live`)
+
+Looks up public registration data with RDAP, the structured successor to WHOIS:
+
+- **Domain age, registrar, and registrar abuse contact** for the sender, Reply-To, Return-Path, and link domains. Domains registered in the last 30 days are flagged high; the last 180 days, medium. Scam campaigns usually run from fresh domains.
+- **Network owner and abuse contact** for the server that delivered the message.
+
+Why RDAP and not DNS: RDAP queries go to IANA and to the registries (Verisign, ARIN, RIPE, and so on), **never to the sender's own servers**. A DNS lookup for a phisher's domain can reach nameservers the phisher runs and tip them off that someone is investigating.
+
+Safety: HTTPS only (redirects included), time limits, response size caps, a cap on the number of lookups, and well-known domains (protected brands, free mail, platform domains) are skipped. A failed lookup becomes a note in the report; it never stops the analysis. Uses only the Python standard library.
+
+### Abuse report drafts (`--abuse-reports DIR`)
+
+Writes draft reports for every party that can act on the message:
+
+- the **bulk mail service** that sent it (can suspend the account)
+- each domain's **registrar** and the sending **network operator** (with `--live`)
+- the **Anti-Phishing Working Group** (shares phishing intelligence across the industry)
+- the **platform**, for abused platform notifications (by email where the platform accepts it, otherwise instructions for its Report option)
+
+Each draft is a ready-to-send `.eml` in the Abuse Reporting Format (ARF, RFC 5965), with a readable explanation, a machine-readable feedback report, and the original message attached with full headers, plus a `.txt` copy for webmail. A `README.txt` in the folder says what to send where.
+
+**It drafts; you send.** The tool contains no code that sends email. Drafts are written neutrally with placeholders for your name and contact details. Verify each contact on the organization's website before sending.
+
 ## Note on DKIM
 
-v0.1 does not cryptographically verify DKIM signatures. It reports the verdict the receiving mail server recorded in `Authentication-Results` and says so in the report. Live DNS lookups and signature verification are planned as an opt-in `--live` mode in a later release.
+The tool does not cryptographically verify DKIM signatures. It reports the verdict the receiving mail server recorded in `Authentication-Results` and says so in the report.
 
 ## Header risk score
 

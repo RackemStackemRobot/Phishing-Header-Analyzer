@@ -20,7 +20,7 @@ from typing import BinaryIO, Callable
 from . import __version__
 from .config import Config
 from .parser import parse_bytes
-from .report import build_report, to_json, to_markdown
+from .report import analyze_message, to_json, to_markdown
 from .scoring import LEVELS
 
 EXIT_OK, EXIT_ERROR, EXIT_RISK, EXIT_CANCELLED = 0, 1, 3, 4
@@ -50,6 +50,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                       help="also inspect the message body (link domains, platform accounts) without asking")
     body.add_argument("--headers-only", action="store_true",
                       help="analyze headers only without asking")
+    p.add_argument("--live", action="store_true",
+                   help="look up domain registration dates and abuse contacts via RDAP (network access; "
+                        "queries public registries, never the sender's servers)")
+    p.add_argument("--abuse-reports", metavar="DIR",
+                   help="write draft abuse reports (ARF .eml + .txt) for each party that can act; never sends")
     p.add_argument("--no-defang", action="store_true",
                    help="leave domains, IPs, and URLs clickable in Markdown output")
     p.add_argument("--no-timestamp", action="store_true",
@@ -132,7 +137,8 @@ def _read_input(arg: str, stdin: BinaryIO) -> tuple[bytes, str]:
 
 def main(argv: list[str] | None = None, stdin: BinaryIO | None = None,
          stdout: BinaryIO | None = None, stderr=None,
-         interactive: bool | None = None, key_reader: Callable[[], str] | None = None) -> int:
+         interactive: bool | None = None, key_reader: Callable[[], str] | None = None,
+         rdap=None) -> int:
     args = build_arg_parser().parse_args(argv)
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
@@ -166,7 +172,22 @@ def main(argv: list[str] | None = None, stdin: BinaryIO | None = None,
         return EXIT_ERROR
 
     analyzed_at = None if args.no_timestamp else datetime.now(timezone.utc)
-    report = build_report(parsed, config, analyzed_at)
+    if args.live:
+        print("Live lookups: querying IANA and registry RDAP servers...", file=stderr, flush=True)
+    report, primary = analyze_message(parsed, config, analyzed_at, live=args.live, rdap=rdap)
+
+    if args.abuse_reports:
+        from .abuse import write_drafts
+        try:
+            written = write_drafts(report, primary, args.abuse_reports)
+        except OSError as exc:
+            print(f"error: could not write abuse reports to {args.abuse_reports}: {exc}", file=stderr)
+            return EXIT_ERROR
+        drafts = [p for p in written if p.suffix == ".eml" and p.name != "original.eml"]
+        print(f"Abuse report drafts written to {args.abuse_reports} ({len(drafts)} email draft(s); "
+              "nothing was sent). See README.txt there.", file=stderr)
+        if not args.live:
+            print("Tip: add --live to find registrar and network abuse contacts too.", file=stderr)
     text = to_markdown(report, do_defang=not args.no_defang) if args.format == "md" else to_json(report)
 
     # Write bytes as UTF-8 so non-Latin domains don't crash narrow consoles (e.g. Windows cp1252).
