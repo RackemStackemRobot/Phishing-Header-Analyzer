@@ -28,7 +28,7 @@ class CliTests(unittest.TestCase):
     def test_markdown(self):
         code, out, _ = run([str(FIXTURES / "clean.eml"), "--format", "md", "--config", str(EXAMPLE_CONFIG)])
         self.assertEqual(code, EXIT_OK)
-        self.assertIn("**Risk: LOW (0/100)**", out)
+        self.assertIn("**Header risk: LOW (0/100)**", out)
 
     def test_no_timestamp_is_reproducible(self):
         args = [str(FIXTURES / "lookalike_domain.eml"), "--no-timestamp", "--config", str(EXAMPLE_CONFIG)]
