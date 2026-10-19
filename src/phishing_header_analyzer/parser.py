@@ -15,7 +15,10 @@ from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 
-from .body import BodyInfo, extract
+from .body import BodyInfo, extract, leaf_parts
+from .fwdparse import ForwardContext
+
+MAX_ATTACHED_ORIGINALS = 5
 from .received import Hop, parse_chain
 
 
@@ -60,6 +63,9 @@ class ParsedHeaders:
     parse_notes: list[str] = field(default_factory=list)
     recipients: list[Address] = field(default_factory=list)   # To, Cc, Delivered-To
     raw_headers: dict[str, list[str]] = field(default_factory=dict)  # lowercase name -> values
+    attached_originals: list[bytes] = field(default_factory=list)   # emails attached to this one
+    headers_lost: bool = False          # True for an original rebuilt from an inline forward
+    forward: ForwardContext | None = None
     body: BodyInfo | None = None                              # None = body not inspected
 
 
@@ -137,6 +143,35 @@ def _message_id_domain(message_id: str | None) -> str | None:
     return message_id.strip().strip("<>").rsplit("@", 1)[1].rstrip(".").lower() or None
 
 
+def attached_originals(data: bytes) -> list[bytes]:
+    """Raw bytes of emails attached to this one (forward-as-attachment).
+
+    Found from the MIME structure alone; no text is read. Reading an attached
+    email's headers is still header analysis, so this runs in headers-only mode too.
+    """
+    try:
+        msg = BytesParser(policy=policy.default).parsebytes(data)
+    except Exception:
+        return []
+    found = []
+    for kind, part in leaf_parts(msg):
+        if kind != "attached":
+            continue
+        try:
+            if part.get_content_type() == "message/rfc822":
+                inner = part.get_payload(0)
+                raw = inner.as_bytes(policy=policy.default.clone(max_line_length=None))
+            else:  # a .eml file attached as a generic file
+                raw = part.get_payload(decode=True) or b""
+        except Exception:
+            continue
+        if raw.strip():
+            found.append(raw)
+        if len(found) >= MAX_ATTACHED_ORIGINALS:
+            break
+    return found
+
+
 def _raw_headers(msg: EmailMessage) -> dict[str, list[str]]:
     """Every header as plain unfolded text, keyed by lowercase name."""
     out: dict[str, list[str]] = {}
@@ -192,6 +227,7 @@ def parse_bytes(data: bytes, source: str = "<bytes>", inspect_body: bool = False
         recipients=_addresses((msg.get_all("To") or []) + (msg.get_all("Cc") or [])
                               + (msg.get_all("Delivered-To") or [])),
         body=extract(data) if inspect_body else None,
+        attached_originals=attached_originals(data),
     )
 
 

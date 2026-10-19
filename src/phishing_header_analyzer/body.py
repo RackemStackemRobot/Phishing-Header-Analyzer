@@ -20,7 +20,10 @@ from email.parser import BytesParser
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
+from .fwdparse import InlineForward, parse_inline_forward
 from .util import classify_ip, org_domain
+
+_BLOCK_TAGS = {"br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "table"}
 
 MAX_BODY_CHARS = 5_000_000
 MAX_PARTS = 50
@@ -44,6 +47,8 @@ class BodyInfo:
     text_parts: int = 0
     html_parts: int = 0
     skipped_attachments: int = 0
+    attached_messages: int = 0           # attached emails: analyzed separately, not read here
+    inline_forward: InlineForward | None = None
     truncated: bool = False
     notes: list[str] = field(default_factory=list)
 
@@ -80,6 +85,7 @@ class _LinkCollector(HTMLParser):
         self.mailtos: list[str] = []
         self.text: list[str] = []          # all visible text (for addresses)
         self.free_text: list[str] = []     # visible text outside links (for bare URLs)
+        self.lines: list[str] = []         # visible text with line breaks (for forward blocks)
         self.anchors: list[tuple[str, str]] = []   # (href, visible text)
         self._skip_depth = 0
         self._anchor_href: str | None = None
@@ -89,6 +95,8 @@ class _LinkCollector(HTMLParser):
         a = dict(attrs)
         if tag in ("script", "style"):
             self._skip_depth += 1
+        if tag in _BLOCK_TAGS:
+            self.lines.append("\n")
         target = a.get("href") if tag in ("a", "area") else a.get("action") if tag == "form" else None
         if target:
             if target.lower().startswith("mailto:"):
@@ -110,6 +118,7 @@ class _LinkCollector(HTMLParser):
         if self._skip_depth:
             return
         self.text.append(data)
+        self.lines.append(data)
         if self._anchor_href is not None:
             self._anchor_text.append(data)   # a label, not a destination
         else:
@@ -141,6 +150,32 @@ def _check_anchor(info: BodyInfo, href: str, text: str):
             return
 
 
+def is_attached_message(part) -> bool:
+    """An email attached to this one (forwarded as attachment)."""
+    if part.get_content_type() == "message/rfc822":
+        return True
+    name = (part.get_filename() or "").lower()
+    return name.endswith(".eml") and part.get_content_maintype() in ("application", "message", "text")
+
+
+def leaf_parts(msg):
+    """Like Message.walk(), but never descends into an attached email.
+
+    An attached original is analyzed on its own, as its own message, so its text
+    must not be mixed into the forwarder's body. Yields ("attached", part) for
+    those and ("leaf", part) for ordinary parts.
+    """
+    stack = [msg]
+    while stack:
+        part = stack.pop()
+        if part is not msg and is_attached_message(part):
+            yield "attached", part
+        elif part.is_multipart():
+            stack.extend(reversed(part.get_payload()))
+        else:
+            yield "leaf", part
+
+
 def extract(data: bytes) -> BodyInfo:
     info = BodyInfo()
     try:
@@ -152,9 +187,12 @@ def extract(data: bytes) -> BodyInfo:
     budget = MAX_BODY_CHARS
     addresses: set[str] = set()
     parts_seen = 0
+    plain_texts: list[str] = []
+    html_lines: list[str] = []
 
-    for part in msg.walk():
-        if part.is_multipart():
+    for kind, part in leaf_parts(msg):
+        if kind == "attached":
+            info.attached_messages += 1
             continue
         parts_seen += 1
         if parts_seen > MAX_PARTS:
@@ -181,6 +219,7 @@ def extract(data: bytes) -> BodyInfo:
 
         if ctype == "text/plain":
             info.text_parts += 1
+            plain_texts.append(text)
             for url in _URL_RE.findall(text):
                 _add_link(info, url)
             _add_addresses(addresses, text)
@@ -201,6 +240,7 @@ def extract(data: bytes) -> BodyInfo:
                 _add_addresses(addresses, m)
             for href, label in collector.anchors:
                 _check_anchor(info, href, label)
+            html_lines.append("".join(collector.lines))
 
         if budget <= 0:
             info.truncated = True
@@ -209,4 +249,9 @@ def extract(data: bytes) -> BodyInfo:
     if info.truncated and not any("stopped" in n for n in info.notes):
         info.notes.append(f"body text capped at {MAX_BODY_CHARS:,} characters")
     info.addresses = sorted(addresses)
+    # Prefer the plain-text part for forward blocks; fall back to HTML rendered as lines.
+    for candidate in ("\n".join(plain_texts), "\n".join(html_lines)):
+        info.inline_forward = parse_inline_forward(candidate)
+        if info.inline_forward:
+            break
     return info

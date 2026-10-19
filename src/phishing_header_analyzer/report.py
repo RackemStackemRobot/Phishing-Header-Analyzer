@@ -17,6 +17,7 @@ from .checks import run_all
 from .checks.auth import trusted_results
 from .config import Config
 from .findings import Finding
+from .forwarding import resolve
 from .parser import Address, ParsedHeaders
 from .scoring import score
 from .util import decode_domain
@@ -24,6 +25,13 @@ from .util import decode_domain
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
 HEADLINE_NOTE = "Authentication confirms who delivered the message, not whether its content is safe."
+FORWARD_NOTES = {
+    "attached": "This report covers the original email that was forwarded as an attachment.",
+    "inline": ("This email was forwarded inline, so the original's authentication and delivery path "
+               "were lost. Only its sender, subject, and links could be checked."),
+    "suspected": ("This looks like a forward. These results describe the person who forwarded it, "
+                  "not the original sender."),
+}
 
 # Concrete next steps, keyed by check ID. Kept here so actions can be tuned in
 # one place without touching the checks. Several checks can share one action.
@@ -68,6 +76,14 @@ ACTIONS = {
         "Treat the message as phishing: its link text disguises where the links go. Block the "
         "real destinations:"),
     "LINK-IP-LITERAL": "Block these IP addresses at the web proxy:",
+    "FORWARD-INLINE": (
+        "Get the original as an attachment so its full headers can be checked: in Gmail on a "
+        "computer, open the message, choose the three-dot menu, then Forward as attachment "
+        "(the Gmail phone app can't do this). Or use Download message and send the .eml file. "
+        "Then run the analysis on that."),
+    "FORWARD-SUSPECTED": (
+        "Re-run and answer y at the prompt (or pass --inspect-body) to find the original sender, "
+        "or get the original forwarded as an attachment."),
     "BULK-MAIL-SERVICE": (
         "If this message is unwanted or malicious, report the sending account to the bulk mail "
         "service that delivered it, attaching the original .eml so they can identify the account. "
@@ -136,6 +152,7 @@ def _body_section(parsed: ParsedHeaders) -> dict:
         "text_parts": b.text_parts,
         "html_parts": b.html_parts,
         "skipped_attachments": b.skipped_attachments,
+        "attached_messages": b.attached_messages,
         "truncated": b.truncated,
     }
 
@@ -147,6 +164,7 @@ def build_report(parsed: ParsedHeaders, config: Config | None = None,
     analyzed_at is optional so the same input can produce byte-identical output.
     """
     config = config or Config()
+    parsed = resolve(parsed)   # analyze the forwarded original, not the forward, when there is one
     findings = sorted(run_all(parsed, config),
                       key=lambda f: (SEVERITY_ORDER[f.severity], -f.points, f.check_id))
     risk = score(findings)
@@ -158,6 +176,8 @@ def build_report(parsed: ParsedHeaders, config: Config | None = None,
         "analyzed_at": analyzed_at.astimezone(timezone.utc).isoformat() if analyzed_at else None,
         "risk": asdict(risk),
         "headline_note": HEADLINE_NOTE,
+        "forward_note": FORWARD_NOTES.get(parsed.forward.kind) if parsed.forward else None,
+        "forward": asdict(parsed.forward) if parsed.forward else None,
         "recommended_actions": recommended_actions(findings),
         "summary": {
             "subject": parsed.subject,
@@ -281,6 +301,9 @@ def to_markdown(report: dict, do_defang: bool = True) -> str:
     add("")
     add(f"_{report['headline_note']}_")
     add("")
+    if report.get("forward_note"):
+        add(f"**{report['forward_note']}**")
+        add("")
     for reason in r["reasons"]:
         add(f"- {reason}")
     add("")
@@ -299,7 +322,11 @@ def to_markdown(report: dict, do_defang: bool = True) -> str:
     add("| Field | Value |")
     add("| --- | --- |")
     add(f"| Subject | {c(s['subject'])} |")
-    add(f"| Date | {c(s['date'])} |")
+    fwd = report.get("forward")
+    if s["date"] is None and fwd and fwd.get("original_date_text"):
+        add(f"| Date | {c(fwd['original_date_text'])} (as written in the forward) |")
+    else:
+        add(f"| Date | {c(s['date'])} |")
     add(f"| From | {c(_fmt_addr(s['from']))} |")
     add(f"| Reply-To | {c([_fmt_addr(x) for x in s['reply_to']])} |")
     add(f"| Return-Path | {c(_fmt_addr(s['return_path']))} |")
@@ -309,6 +336,25 @@ def to_markdown(report: dict, do_defang: bool = True) -> str:
     if s["x_originating_ip"]:
         add(f"| X-Originating-IP | {c(s['x_originating_ip'])} |")
     add("")
+
+    if fwd:
+        how = {"attached": "As an attachment (original headers preserved)",
+               "inline": "Inline (original headers lost)",
+               "suspected": "Unknown (body not inspected)"}[fwd["kind"]]
+        add("## Forwarded By")
+        add("")
+        add("| Field | Value |")
+        add("| --- | --- |")
+        add(f"| Forwarded by | {c(fwd['forwarded_by'])} |")
+        add(f"| Forward subject | {c(fwd['wrapper_subject'])} |")
+        if fwd.get("wrapper_date"):
+            add(f"| Forwarded | {c(fwd['wrapper_date'])} |")
+        add(f"| How | {how} |")
+        if fwd["kind"] == "inline" and fwd.get("depth", 1) > 1:
+            add(f"| Times forwarded | {fwd['depth']} |")
+        if fwd.get("references_domain"):
+            add(f"| Original Message-ID domain | {c(fwd['references_domain'])} (from References) |")
+        add("")
 
     add("## Findings")
     add("")
@@ -349,8 +395,10 @@ def to_markdown(report: dict, do_defang: bool = True) -> str:
         add("Not inspected (headers only). To check link domains and platform accounts, "
             "re-run and answer `y` at the prompt, or pass `--inspect-body`.")
     else:
+        attached = (f" {body['attached_messages']} attached email(s) not read here."
+                    if body.get("attached_messages") else "")
         add(f"Inspected {body['text_parts']} text and {body['html_parts']} HTML part(s); "
-            f"{body['skipped_attachments']} attachment(s) skipped, not opened. "
+            f"{body['skipped_attachments']} file attachment(s) skipped, not opened.{attached} "
             "Link domains only; no link was visited.")
         add("")
         if body["link_domains"]:

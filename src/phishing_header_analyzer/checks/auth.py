@@ -45,6 +45,8 @@ def dkim_signing_domain(result: AuthResult) -> str | None:
 
 
 def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
+    if parsed.headers_lost:
+        return []  # inline-forwarded original: there are no authentication results to judge
     out: list[Finding] = []
     results, basis = trusted_results(parsed, config)
 

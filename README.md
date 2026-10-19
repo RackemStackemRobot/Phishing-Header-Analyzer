@@ -50,6 +50,16 @@ This tool is designed to be safe by default:
 - Identifies the bulk email service that delivered the message (SendGrid, Mailgun, Amazon SES, Mailchimp/Mandrill, Postmark, SparkPost, Brevo, Constant Contact) from DKIM signatures, relay hostnames, and service-specific headers. Empty leftover headers are ignored, since real scam mail sometimes carries blank headers named after other services.
 - Informational only, since legitimate newsletters use these services too. Its value is the recommended action: the service can suspend the sending account, which is usually more effective than blocking one domain. Verify the abuse contact on the service's website before sending a report.
 
+### Forwarded mail
+
+Phishing often reaches an analyst as a forward from the person who received it. How it was forwarded decides what can be checked:
+
+- **Forwarded as an attachment:** the original arrives intact. The tool finds it, follows nested attachments inward, and analyzes the original with full headers. The forwarder is listed separately under "Forwarded By." This works in headers-only mode too, since an attached email's headers are still headers.
+- **Forwarded inline** (the normal Forward button): the forwarding client keeps only a text summary of the original, so its authentication results and delivery path are gone for good. With body inspection on, the tool recovers the innermost original's sender, subject, and date from the forward block (Gmail, Outlook, Apple Mail, and Thunderbird formats), runs the sender, display-name, lookalike, and link checks against that sender, skips the checks whose data was lost, and says so at the top of the report. It also recovers the original Message-ID's domain from the `References` header when present.
+- **Looks forwarded but the body wasn't inspected:** the report says the results describe the forwarder, not the original sender.
+
+For the best results, ask for suspicious mail to be sent as an attachment. In Gmail on a computer: open the message, three-dot menu, **Forward as attachment** (the Gmail phone app can't do this), or **Download message** and send the `.eml` file.
+
 ### Body inspection (opt-in)
 
 At a terminal, the tool asks before reading the message body. Answer `y` to inspect it, `n` for headers only, or press Esc (or any other key) to cancel. Scripts and piped input are never prompted and stay headers-only unless `--inspect-body` is passed.

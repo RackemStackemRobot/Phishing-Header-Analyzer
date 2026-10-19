@@ -30,6 +30,8 @@ def boundary_hop(parsed: ParsedHeaders, config: Config) -> Hop | None:
 
 
 def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
+    if parsed.headers_lost:
+        return []  # inline-forwarded original: the delivery path wasn't preserved
     out: list[Finding] = []
     hops = parsed.hops
 
