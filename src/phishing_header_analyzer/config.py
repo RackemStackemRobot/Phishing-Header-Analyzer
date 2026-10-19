@@ -27,6 +27,27 @@ DEFAULT_FREEMAIL_DOMAINS = [
 ]
 
 
+# Notification services attackers abuse to deliver lures through the real platform
+# (a real Google Group invite, a real DocuSign envelope, a real PayPal invoice).
+# Keys are patterns matched against the From address (* is a wildcard); values
+# are display names. A starting point: verify and extend for your environment.
+DEFAULT_PLATFORM_SENDERS = {
+    "*@groups.google.com": "Google Groups",
+    "drive-shares-*@google.com": "Google Drive sharing",
+    "comments-noreply@docs.google.com": "Google Docs comments",
+    "calendar-notification@google.com": "Google Calendar",
+    "*@sharepointonline.com": "Microsoft SharePoint / OneDrive",
+    "*@docusign.net": "DocuSign",
+    "*@*.docusign.net": "DocuSign",
+    "*@echosign.com": "Adobe Acrobat Sign",
+    "*@adobesign.com": "Adobe Acrobat Sign",
+    "no-reply@dropbox.com": "Dropbox",
+    "service@paypal.com": "PayPal (invoices and money requests)",
+    "*@notification.intuit.com": "Intuit QuickBooks invoices",
+    "notifications@github.com": "GitHub notifications",
+}
+
+
 @dataclass
 class Config:
     # Brands and vendors to watch for impersonation and lookalikes.
@@ -39,6 +60,9 @@ class Config:
     # headers stamped by these are trusted. If empty, the topmost
     # Authentication-Results header is trusted and the report says so.
     trusted_authserv_ids: list[str] = field(default_factory=list)
+    # Notification platforms whose authenticated mail still needs a human to
+    # check who triggered it. Pattern -> display name.
+    platform_senders: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PLATFORM_SENDERS))
 
     @property
     def watched_domains(self) -> list[str]:
@@ -58,4 +82,14 @@ class Config:
         unknown = set(data) - known
         if unknown:
             raise ValueError(f"unknown config keys: {', '.join(sorted(unknown))}")
-        return cls(**{k: [str(v).lower() for v in data[k]] for k in data})
+        values = {}
+        for key, value in data.items():
+            if key == "platform_senders":
+                if not isinstance(value, dict):
+                    raise ValueError("platform_senders must be an object of pattern: name pairs")
+                values[key] = {str(k).lower(): str(v) for k, v in value.items()}
+            else:
+                if not isinstance(value, list):
+                    raise ValueError(f"{key} must be a list")
+                values[key] = [str(v).lower() for v in value]
+        return cls(**values)
