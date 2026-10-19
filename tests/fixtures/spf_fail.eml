@@ -1,0 +1,28 @@
+Return-Path: <noreply@bulk-sender.example>
+Delivered-To: analyst@northwind.example
+Received: from mx1.northwind.example (mx1.northwind.example [192.0.2.10])
+	by mailstore.northwind.example with LMTP
+	id 2Kd9xQ; Mon, 19 Oct 2026 14:31:40 -0500
+Received: from vps-4471.hosting.example (unknown [203.0.113.45])
+	by mx1.northwind.example (Postfix) with ESMTP id 1B2C3D4E5F
+	for <analyst@northwind.example>; Mon, 19 Oct 2026 14:31:38 -0500
+Received: from localhost (localhost [127.0.0.1])
+	by vps-4471.hosting.example (Postfix) with ESMTP id 0F0E0D0C0B
+	for <analyst@northwind.example>; Mon, 19 Oct 2026 21:45:02 +0000
+Authentication-Results: mx1.northwind.example;
+	spf=fail (sender IP is 203.0.113.45) smtp.mailfrom=noreply@bulk-sender.example;
+	dkim=none (message not signed);
+	dmarc=fail (p=reject) header.from=contoso-bank.example
+Received-SPF: fail (mx1.northwind.example: domain of noreply@bulk-sender.example does not designate 203.0.113.45 as permitted sender) client-ip=203.0.113.45;
+From: Contoso Bank Security <security@contoso-bank.example>
+To: analyst@northwind.example
+Subject: URGENT: Unusual sign-in detected on your account
+Date: Mon, 19 Oct 2026 12:30:00 +0000
+Message-ID: <a81f2c90e7b4@vps-4471.hosting.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+We detected an unusual sign-in. Verify your account within 24 hours.
+(Test fixture. Spoofed From domain sent from an unauthorized host: SPF fail,
+no DKIM, DMARC fail, Return-Path and Message-ID domains don't match From,
+hop timestamps out of order, and a Date header hours older than the first hop.)

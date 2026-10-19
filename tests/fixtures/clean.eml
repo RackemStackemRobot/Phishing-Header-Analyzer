@@ -1,0 +1,28 @@
+Return-Path: <bounces@contoso-bank.example>
+Delivered-To: analyst@northwind.example
+Received: from mx1.northwind.example (mx1.northwind.example [192.0.2.10])
+	by mailstore.northwind.example with LMTP
+	id 7Hq2aB; Mon, 19 Oct 2026 14:02:11 -0500
+Received: from mail.contoso-bank.example (mail.contoso-bank.example [198.51.100.20])
+	by mx1.northwind.example (Postfix) with ESMTPS id 4F1A2B3C4D
+	for <analyst@northwind.example>; Mon, 19 Oct 2026 14:02:09 -0500
+Received: from app07.internal.contoso-bank.example (app07.internal.contoso-bank.example [10.20.30.7])
+	by mail.contoso-bank.example (Postfix) with ESMTP id 9A8B7C6D5E
+	for <analyst@northwind.example>; Mon, 19 Oct 2026 19:02:07 +0000
+Authentication-Results: mx1.northwind.example;
+	spf=pass (sender IP is 198.51.100.20) smtp.mailfrom=bounces@contoso-bank.example;
+	dkim=pass (2048-bit key) header.d=contoso-bank.example header.s=s1;
+	dmarc=pass (p=reject) header.from=contoso-bank.example
+Received-SPF: pass (mx1.northwind.example: domain of bounces@contoso-bank.example designates 198.51.100.20 as permitted sender) client-ip=198.51.100.20;
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=contoso-bank.example; s=s1;
+	h=from:to:subject:date:message-id; bh=FIXTUREBODYHASHNOTREAL=; b=FIXTURESIGNATURENOTREAL=
+From: Contoso Bank <alerts@contoso-bank.example>
+To: analyst@northwind.example
+Subject: Your monthly statement is ready
+Date: Mon, 19 Oct 2026 19:02:06 +0000
+Message-ID: <20261019190206.9A8B7C6D5E@contoso-bank.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Your October statement is available in online banking.
+(Test fixture. Benign message with consistent headers and passing authentication.)

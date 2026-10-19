@@ -1,0 +1,28 @@
+Return-Path: <mailer@fabrikam-invoicing.example>
+Delivered-To: ap-team@northwind.example
+Received: from mx1.northwind.example (mx1.northwind.example [192.0.2.10])
+	by mailstore.northwind.example with LMTP
+	id 5Rt1wM; Mon, 19 Oct 2026 09:15:22 -0500
+Received: from smtp.fabrikam-invoicing.example (smtp.fabrikam-invoicing.example [198.51.100.77])
+	by mx1.northwind.example (Postfix) with ESMTPS id 6C7D8E9F0A
+	for <ap-team@northwind.example>; Mon, 19 Oct 2026 09:15:20 -0500
+Authentication-Results: mx1.northwind.example;
+	spf=pass (sender IP is 198.51.100.77) smtp.mailfrom=mailer@fabrikam-invoicing.example;
+	dkim=pass (2048-bit key) header.d=fabrikam-invoicing.example header.s=mail;
+	dmarc=pass (p=none) header.from=fabrikam-invoicing.example
+Received-SPF: pass (mx1.northwind.example: domain of mailer@fabrikam-invoicing.example designates 198.51.100.77 as permitted sender) client-ip=198.51.100.77;
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=fabrikam-invoicing.example; s=mail;
+	h=from:reply-to:to:subject:date:message-id; bh=FIXTUREBODYHASHNOTREAL=; b=FIXTURESIGNATURENOTREAL=
+From: "billing@fabrikam.example" <accounts@fabrikam-invoicing.example>
+Reply-To: Fabrikam Accounts Receivable <fabrikam.ar.dept@freemail.example>
+To: ap-team@northwind.example
+Subject: Updated remittance details for invoice INV-20431
+Date: Mon, 19 Oct 2026 14:15:18 +0000
+Message-ID: <inv20431.5531@fabrikam-invoicing.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Please update our bank details before paying invoice INV-20431. Reply to confirm.
+(Test fixture. Business email compromise pattern: authentication passes for a
+lookalike vendor domain, display name impersonates a different address, and
+Reply-To routes responses to an unrelated free mail domain.)

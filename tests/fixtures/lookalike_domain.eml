@@ -1,0 +1,27 @@
+Return-Path: <security@c0ntoso-bank.example>
+Delivered-To: analyst@northwind.example
+Received: from mx1.northwind.example (mx1.northwind.example [192.0.2.10])
+	by mailstore.northwind.example with LMTP
+	id 9Wm3pZ; Mon, 19 Oct 2026 11:48:05 -0500
+Received: from mail.c0ntoso-bank.example (mail.c0ntoso-bank.example [203.0.113.88])
+	by mx1.northwind.example (Postfix) with ESMTPS id 3E4F5A6B7C
+	for <analyst@northwind.example>; Mon, 19 Oct 2026 11:48:03 -0500
+Authentication-Results: mx1.northwind.example;
+	spf=pass (sender IP is 203.0.113.88) smtp.mailfrom=security@c0ntoso-bank.example;
+	dkim=pass (2048-bit key) header.d=c0ntoso-bank.example header.s=default;
+	dmarc=pass (p=none) header.from=c0ntoso-bank.example
+Received-SPF: pass (mx1.northwind.example: domain of security@c0ntoso-bank.example designates 203.0.113.88 as permitted sender) client-ip=203.0.113.88;
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=c0ntoso-bank.example; s=default;
+	h=from:to:subject:date:message-id; bh=FIXTUREBODYHASHNOTREAL=; b=FIXTURESIGNATURENOTREAL=
+From: Contoso Bank <security@c0ntoso-bank.example>
+To: analyst@northwind.example
+Subject: Action required: confirm your identity
+Date: Mon, 19 Oct 2026 16:48:01 +0000
+Message-ID: <confirm.88213@c0ntoso-bank.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Please confirm your identity to avoid account suspension.
+(Test fixture. Attacker-registered lookalike domain: zero substituted for the
+letter o. SPF, DKIM, and DMARC all pass because the attacker owns the domain,
+which is why authentication results alone don't clear a message.)

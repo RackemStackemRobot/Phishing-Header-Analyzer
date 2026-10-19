@@ -1,0 +1,8 @@
+Received: from relay.unknown-host.example (unknown [203.0.113.200])
+	by mx1.northwind.example (Postfix) with ESMTP id 8D9E0F1A2B
+	for <analyst@northwind.example>; Mon, 19 Oct 2026 08:05:44 -0500
+From: IT Helpdesk <helpdesk@xn--nrthwind-nbh.example>
+To: analyst@northwind.example
+Subject: Password expires today
+Date: Mon, 19 Oct 2026 13:05:40 +0000
+Message-ID: <pw-expire-0042@relay.unknown-host.example>
