@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import tempfile
@@ -12,8 +13,11 @@ EXAMPLE_CONFIG = ROOT / "examples" / "config.example.json"
 
 
 def run(args, stdin_bytes=b""):
+    """Run the CLI as a script would: never interactive, so it can't stop to ask
+    a question, even when the test suite itself runs in a real terminal."""
     out, err = io.BytesIO(), io.StringIO()
-    code = main(args, stdin=io.BytesIO(stdin_bytes), stdout=out, stderr=err)
+    with contextlib.redirect_stderr(io.StringIO()):   # argparse usage errors go to real stderr
+        code = main(args, stdin=io.BytesIO(stdin_bytes), stdout=out, stderr=err, interactive=False)
     return code, out.getvalue().decode("utf-8"), err.getvalue()
 
 
