@@ -5,9 +5,9 @@ from __future__ import annotations
 from ..config import Config
 from ..findings import Finding
 from ..parser import ParsedHeaders
-from . import auth, hops, identity, lookalike
+from . import auth, hops, identity, lookalike, platform
 
-CHECK_MODULES = (auth, identity, hops, lookalike)
+CHECK_MODULES = (auth, identity, hops, lookalike, platform)
 
 
 def run_all(parsed: ParsedHeaders, config: Config | None = None) -> list[Finding]:
