@@ -96,6 +96,24 @@ From: news@shop.example
 """)
         self.assertIn("DKIM-UNALIGNED", ids(run_all(parse_bytes(raw), Config())))
 
+    def test_gmail_style_header_i_counts_as_aligned(self):
+        # Gmail records the signer as header.i=@domain rather than header.d=domain.
+        raw = message("""
+Authentication-Results: mx.google.com; dkim=pass header.i=@recruiter.example header.s=mailo header.b=abc123; dkim=pass header.i=@bulk-esp.example header.s=mg header.b="x/y"; spf=pass smtp.mailfrom="bounce+1a2b@recruiter.example"
+From: Recruiter <jobs@recruiter.example>
+""")
+        cfg = Config(trusted_authserv_ids=["mx.google.com"])
+        self.assertNotIn("DKIM-UNALIGNED", ids(run_all(parse_bytes(raw), cfg)))
+
+    def test_gmail_style_header_i_unaligned_still_flagged(self):
+        raw = message("""
+Authentication-Results: mx.google.com; dkim=pass header.i=@bulk-esp.example header.s=mg header.b=abc
+From: Shop <news@shop.example>
+""")
+        cfg = Config(trusted_authserv_ids=["mx.google.com"])
+        f = next(f for f in run_all(parse_bytes(raw), cfg) if f.check_id == "DKIM-UNALIGNED")
+        self.assertEqual(f.evidence["signing_domains"], ["bulk-esp.example"])
+
     def test_spf_conflict(self):
         raw = message("""
 Authentication-Results: mx.example; spf=pass; dkim=pass header.d=x.example; dmarc=pass
