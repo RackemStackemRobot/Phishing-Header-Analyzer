@@ -31,6 +31,25 @@ class ParseReceivedTests(unittest.TestCase):
         self.assertIsNone(hop.timestamp)
         self.assertIn("no timestamp found", hop.parse_notes)
 
+    def test_fractional_seconds(self):
+        # Seen from SendGrid's inbound relay.
+        hop = parse_received("from mail.sender.example (unknown) by geopod-ismtpd-10 (SG) with ESMTP id abc "
+                             "for <a@b.example>; Mon, 19 Oct 2026 15:19:12.105 +0000 (UTC)")
+        self.assertEqual(hop.timestamp, datetime(2026, 10, 19, 15, 19, 12, tzinfo=timezone.utc))
+        self.assertEqual(hop.parse_notes, [])
+
+    def test_iso_timestamp_without_semicolon(self):
+        # Seen from SendGrid's internal hop: no semicolon, Go-style time.
+        hop = parse_received("by recvd-569578f769-sxm2n with SMTP id recvd-1 "
+                             "2026-10-19 15:19:12.122905 +0000 UTC m=+1721900.718560597")
+        self.assertEqual(hop.timestamp, datetime(2026, 10, 19, 15, 19, 12, tzinfo=timezone.utc))
+        self.assertEqual(hop.by_host, "recvd-569578f769-sxm2n")
+        self.assertEqual(hop.parse_notes, [])
+
+    def test_iso_timestamp_with_offset(self):
+        hop = parse_received("by relay.example with SMTP id x 2026-10-19 10:19:12 -0500")
+        self.assertEqual(hop.timestamp, datetime(2026, 10, 19, 15, 19, 12, tzinfo=timezone.utc))
+
     def test_bad_ip_noted(self):
         hop = parse_received("from a.example ([999.1.1.1]) by b.example; Mon, 19 Oct 2026 10:00:00 +0000")
         self.assertIsNone(hop.from_ip)
