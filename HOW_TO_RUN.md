@@ -70,8 +70,23 @@ Copy `examples/config.example.json` and edit it. Every key is optional; anything
 | `protected_domains` | Brands and vendors your users trust. Replaces the built-in list (Microsoft, PayPal, DocuSign, major banks and shippers, and others). |
 | `freemail_domains` | Free mail providers. A Reply-To pointing at one of these is weighted higher. Replaces the built-in list. |
 | `trusted_authserv_ids` | Hostnames of your own inbound mail servers. Only Authentication-Results headers stamped by these are trusted. If left empty, the topmost Authentication-Results header is trusted and the report says so. |
+| `platform_senders` | Notification services whose authentic mail still needs a human check (Google Groups, DocuSign, PayPal invoices, and others). An object of `"address pattern": "display name"` pairs; `*` is a wildcard. Replaces the built-in list. |
 
 Setting `trusted_authserv_ids` is the most important step for accurate results, because it stops forged authentication headers from being believed.
+
+**Gmail users:** set `trusted_authserv_ids` to `["mx.google.com"]`. That's the name Gmail's servers stamp on their authentication results.
+
+Example `platform_senders` entry:
+
+```json
+{
+  "platform_senders": {
+    "*@groups.google.com": "Google Groups",
+    "*@docusign.net": "DocuSign",
+    "*@notify.vendor-portal.example": "Vendor portal"
+  }
+}
+```
 
 ## Exit codes
 
@@ -89,3 +104,4 @@ Setting `trusted_authserv_ids` is the most important step for accurate results, 
 ```bash
 python -m unittest discover -s tests -v
 ```
+
