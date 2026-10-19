@@ -39,13 +39,18 @@ This tool is designed to be safe by default:
 - Homoglyph substitutions (for example `0` for `o`, `rn` for `m`)
 - Near-miss spellings of domains on an editable protected-brands list
 
+### Trusted-service abuse
+
+- Authentic notifications from platforms attackers abuse to deliver lures: Google Groups invites, Google Drive shares, SharePoint/OneDrive, DocuSign, Adobe Sign, Dropbox, PayPal invoices, QuickBooks invoices, GitHub, and others (editable list)
+- These pass SPF, DKIM, and DMARC because the platform really sent them. The finding tells the analyst to verify the account that triggered the notification, not the platform
+
 ## Note on DKIM
 
 v0.1 does not cryptographically verify DKIM signatures. It reports the verdict the receiving mail server recorded in `Authentication-Results` and says so in the report. Live DNS lookups and signature verification are planned as an opt-in `--live` mode in a later release.
 
-## Risk score
+## Header risk score
 
-Each finding carries points. The score is their sum, capped at 100, and every point traces back to a stated reason in the report.
+Each finding carries points. The score is their sum, capped at 100, and every point traces back to a stated reason in the report. It is labeled "header risk" on purpose: authentication confirms who delivered a message, not whether its content is safe.
 
 | Level | Rule |
 | --- | --- |
@@ -56,6 +61,8 @@ Each finding carries points. The score is their sum, capped at 100, and every po
 Passing SPF, DKIM, and DMARC does not make a message safe. An attacker who registers a lookalike domain can pass all three. The included test fixtures demonstrate this.
 
 ## Reports
+
+Every report opens with **Recommended Actions** when there's something to do, such as quarantining a spoofed message, blocking a lookalike domain, or verifying the account behind a platform notification.
 
 - **JSON:** raw, complete, and machine-readable, for SIEM or SOAR ingestion.
 - **Markdown:** for pasting into tickets. Sender-written values (subjects, display names) are escaped so they can't break tables or inject formatting, and domains, IPs, and URLs are defanged (`example[.]com`, `hxxp://`) so ticketing systems don't make them clickable.
@@ -74,3 +81,4 @@ See [HOW_TO_RUN.md](HOW_TO_RUN.md) for install steps, all options, and the confi
 ## Safety note
 
 This is not an offensive tool. It analyzes headers of messages you already received so you can decide whether they are malicious and respond.
+
