@@ -1,0 +1,11 @@
+{
+  "org_domains": ["northwind.example"],
+  "protected_domains": [
+    "contoso-bank.example",
+    "microsoft.com",
+    "office.com",
+    "docusign.com",
+    "paypal.com"
+  ],
+  "trusted_authserv_ids": ["mx1.northwind.example"]
+}
