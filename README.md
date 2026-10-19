@@ -1,5 +1,9 @@
 # phishing-header-analyzer
 
+![tests](https://github.com/RackemStackemRobot/Phishing-Header-Analyzer/actions/workflows/tests.yml/badge.svg)
+
+**[See a sample report](examples/sample-report.md)** from a real phishing email.
+
 Defensive email header analyzer for phishing triage. Outputs JSON or Markdown reports.
 
 Give it a saved `.eml` file or a text file of raw headers. It parses the authentication results, sender identity fields, and the Received chain, then produces a report an analyst can drop straight into a ticket. Every risk point in the score comes with a stated reason, so you can see exactly why a message scored the way it did.
