@@ -15,9 +15,15 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
+You can also run it without installing, from the repo root:
+
+```bash
+PYTHONPATH=src python -m phishing_header_analyzer message.eml
+```
+
 ## Get the headers
 
-- **Outlook (desktop):** open the message, File > Properties, copy "Internet headers," or drag the message to a folder to save it as `.msg` and export as `.eml`.
+- **Outlook (desktop):** open the message, File > Properties, copy "Internet headers" into a text file. Or drag the message out of Outlook to save it, then export as `.eml`.
 - **Gmail:** open the message, three-dot menu > "Show original," then "Download original" to get a `.eml`.
 - **Thunderbird:** File > Save As > File to save as `.eml`.
 
@@ -34,7 +40,49 @@ phishing-header-analyzer message.eml --format md
 
 # Write the report to a file
 phishing-header-analyzer message.eml --format md --out report.md
+
+# Use your organization's settings
+phishing-header-analyzer message.eml --config my-org.json
+
+# Read pasted headers from stdin
+phishing-header-analyzer - < headers.txt
 ```
+
+## Options
+
+| Option | What it does |
+| --- | --- |
+| `--format json` or `md` | Report format. Default is `json`. |
+| `--out PATH` | Write the report to a file instead of the screen. |
+| `--config PATH` | Load settings from a JSON file (see below). |
+| `--no-defang` | Leave domains, IPs, and URLs clickable in Markdown output. |
+| `--no-timestamp` | Leave out the analysis time so repeat runs give identical output. |
+| `--fail-on LEVEL` | Exit with code 3 if the risk is at or above `low`, `medium`, or `high`. |
+| `--version` | Show the version. |
+
+## Config file
+
+Copy `examples/config.example.json` and edit it. Every key is optional; anything you leave out keeps its default.
+
+| Key | Purpose |
+| --- | --- |
+| `org_domains` | Your own organization's domains. Lookalikes of these are flagged. |
+| `protected_domains` | Brands and vendors your users trust. Replaces the built-in list (Microsoft, PayPal, DocuSign, major banks and shippers, and others). |
+| `freemail_domains` | Free mail providers. A Reply-To pointing at one of these is weighted higher. Replaces the built-in list. |
+| `trusted_authserv_ids` | Hostnames of your own inbound mail servers. Only Authentication-Results headers stamped by these are trusted. If left empty, the topmost Authentication-Results header is trusted and the report says so. |
+
+Setting `trusted_authserv_ids` is the most important step for accurate results, because it stops forged authentication headers from being believed.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Analysis completed |
+| 1 | Input or config error (missing file, empty input, not an email, bad JSON) |
+| 2 | Invalid command-line options |
+| 3 | Risk met or exceeded the `--fail-on` level |
+
+`--fail-on` lets you use the tool in scripts and mail-triage pipelines, for example to route high-risk messages to an analyst queue.
 
 ## Run the tests
 
