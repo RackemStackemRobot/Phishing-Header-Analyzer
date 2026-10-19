@@ -98,7 +98,8 @@ def parse_authentication_results(values: list[str]) -> list[AuthResult]:
             m = _METHOD_RE.match(part)
             if not m:
                 continue
-            props = {k.lower(): v.strip("<>") for k, v in _PROP_RE.findall(part)}
+            # Some servers (Gmail, for one) wrap values in quotes: smtp.mailfrom="a@b.example"
+            props = {k.lower(): v.strip('"').strip("<>") for k, v in _PROP_RE.findall(part)}
             pol = None
             if m.group(1).lower() == "dmarc" and (pm := _POLICY_RE.search(part)):
                 pol = pm.group(1).lower()
