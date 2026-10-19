@@ -45,6 +45,11 @@ This tool is designed to be safe by default:
 - Authentic notifications from platforms attackers abuse to deliver lures: Google Groups invites, Google Drive shares, SharePoint/OneDrive, DocuSign, Adobe Sign, Dropbox, PayPal invoices, QuickBooks invoices, GitHub, and others (editable list)
 - These pass SPF, DKIM, and DMARC because the platform really sent them. The finding tells the analyst to verify the account that triggered the notification, not the platform
 
+### Bulk mail service
+
+- Identifies the bulk email service that delivered the message (SendGrid, Mailgun, Amazon SES, Mailchimp/Mandrill, Postmark, SparkPost, Brevo, Constant Contact) from DKIM signatures, relay hostnames, and service-specific headers. Empty leftover headers are ignored, since real scam mail sometimes carries blank headers named after other services.
+- Informational only, since legitimate newsletters use these services too. Its value is the recommended action: the service can suspend the sending account, which is usually more effective than blocking one domain. Verify the abuse contact on the service's website before sending a report.
+
 ### Body inspection (opt-in)
 
 At a terminal, the tool asks before reading the message body. Answer `y` to inspect it, `n` for headers only, or press Esc (or any other key) to cancel. Scripts and piped input are never prompted and stay headers-only unless `--inspect-body` is passed.

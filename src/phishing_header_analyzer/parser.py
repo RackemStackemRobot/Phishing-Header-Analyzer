@@ -59,6 +59,7 @@ class ParsedHeaders:
     x_originating_ip: str | None
     parse_notes: list[str] = field(default_factory=list)
     recipients: list[Address] = field(default_factory=list)   # To, Cc, Delivered-To
+    raw_headers: dict[str, list[str]] = field(default_factory=dict)  # lowercase name -> values
     body: BodyInfo | None = None                              # None = body not inspected
 
 
@@ -136,6 +137,18 @@ def _message_id_domain(message_id: str | None) -> str | None:
     return message_id.strip().strip("<>").rsplit("@", 1)[1].rstrip(".").lower() or None
 
 
+def _raw_headers(msg: EmailMessage) -> dict[str, list[str]]:
+    """Every header as plain unfolded text, keyed by lowercase name."""
+    out: dict[str, list[str]] = {}
+    for name, value in msg.raw_items():
+        try:
+            text = str(value)
+        except Exception:  # a malformed header shouldn't stop analysis
+            continue
+        out.setdefault(name.lower(), []).append(" ".join(text.split()))
+    return out
+
+
 # ---------- public API ----------
 
 def parse_bytes(data: bytes, source: str = "<bytes>", inspect_body: bool = False) -> ParsedHeaders:
@@ -175,6 +188,7 @@ def parse_bytes(data: bytes, source: str = "<bytes>", inspect_body: bool = False
         hops=parse_chain(all_str("Received")),
         x_originating_ip=x_orig,
         parse_notes=notes,
+        raw_headers=_raw_headers(msg),
         recipients=_addresses((msg.get_all("To") or []) + (msg.get_all("Cc") or [])
                               + (msg.get_all("Delivered-To") or [])),
         body=extract(data) if inspect_body else None,

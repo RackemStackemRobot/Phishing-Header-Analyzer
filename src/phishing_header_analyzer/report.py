@@ -68,6 +68,10 @@ ACTIONS = {
         "Treat the message as phishing: its link text disguises where the links go. Block the "
         "real destinations:"),
     "LINK-IP-LITERAL": "Block these IP addresses at the web proxy:",
+    "BULK-MAIL-SERVICE": (
+        "If this message is unwanted or malicious, report the sending account to the bulk mail "
+        "service that delivered it, attaching the original .eml so they can identify the account. "
+        "Verify the contact on the service's website before sending:"),
     "LINK-LOOKALIKE-HOMOGLYPH": _LOOKALIKE,
     "LINK-LOOKALIKE-NEAR-MISS": _LOOKALIKE,
     "LINK-LOOKALIKE-CONTAINS-BRAND": _LOOKALIKE,
@@ -79,6 +83,7 @@ _SUBJECTS = {
     "LINK-OFF-PLATFORM": lambda ev: ev.get("domains", []),
     "LINK-TEXT-MISMATCH": lambda ev: [link["goes_to"] for link in ev.get("links", [])],
     "LINK-IP-LITERAL": lambda ev: ev.get("ips", []),
+    "BULK-MAIL-SERVICE": lambda ev: [f"{ev['service']}: {ev['abuse_contact']}"],
 }
 
 
