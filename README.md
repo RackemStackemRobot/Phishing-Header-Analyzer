@@ -43,14 +43,33 @@ This tool is designed to be safe by default:
 
 v0.1 does not cryptographically verify DKIM signatures. It reports the verdict the receiving mail server recorded in `Authentication-Results` and says so in the report. Live DNS lookups and signature verification are planned as an opt-in `--live` mode in a later release.
 
+## Risk score
+
+Each finding carries points. The score is their sum, capped at 100, and every point traces back to a stated reason in the report.
+
+| Level | Rule |
+| --- | --- |
+| low | score under 20 |
+| medium | score 20 to 49, or any single high-severity finding |
+| high | score 50 or more, or two or more high-severity findings |
+
+Passing SPF, DKIM, and DMARC does not make a message safe. An attacker who registers a lookalike domain can pass all three. The included test fixtures demonstrate this.
+
+## Reports
+
+- **JSON:** raw, complete, and machine-readable, for SIEM or SOAR ingestion.
+- **Markdown:** for pasting into tickets. Sender-written values (subjects, display names) are escaped so they can't break tables or inject formatting, and domains, IPs, and URLs are defanged (`example[.]com`, `hxxp://`) so ticketing systems don't make them clickable.
+
 ## Run
 
 - JSON:
   - `phishing-header-analyzer message.eml`
 - Markdown:
   - `phishing-header-analyzer message.eml --format md`
+- With your organization's settings:
+  - `phishing-header-analyzer message.eml --config my-org.json`
 
-See [HOW_TO_RUN.md] for install steps and options.
+See [HOW_TO_RUN.md](HOW_TO_RUN.md) for install steps, all options, and the config file format.
 
 ## Safety note
 
