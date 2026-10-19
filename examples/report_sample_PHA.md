@@ -1,3 +1,5 @@
+> Real Google Groups phishing lure, analyzed with `--inspect-body --live`. Attacker domains, accounts, and the Message-ID are redacted.
+
 # Phishing Header Analysis: message.eml
 
 **Header risk: MEDIUM (45/100)**
