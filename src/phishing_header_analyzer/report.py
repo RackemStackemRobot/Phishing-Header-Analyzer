@@ -22,6 +22,53 @@ from .scoring import score
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
+HEADLINE_NOTE = "Authentication confirms who delivered the message, not whether its content is safe."
+
+# Concrete next steps, keyed by check ID. Kept here so actions can be tuned in
+# one place without touching the checks. Several checks can share one action.
+_SPOOFED = ("Treat the From address as spoofed. Quarantine the message and search mail "
+            "logs for other messages from the same sending IP or Return-Path.")
+_LOOKALIKE = ("Block the domain at the mail gateway and web proxy, and search mail logs "
+              "for other messages from it.")
+_DISPLAY = ("Judge the actual sending address, not the display name. Confirm with the "
+            "real organization through a contact you already have.")
+ACTIONS = {
+    "PLATFORM-NOTIFICATION": (
+        "Find the account that triggered this notification (the inviter, sharer, or invoice "
+        "sender named in the message body) and verify it through a channel you already trust. "
+        "Don't join, open, sign, or pay until verified. If it's malicious, report the group, "
+        "file, or account to the platform as well as blocking it locally."),
+    "DMARC-FAIL": _SPOOFED,
+    "SPF-FAIL": _SPOOFED,
+    "DKIM-FAIL": _SPOOFED,
+    "LOOKALIKE-HOMOGLYPH": _LOOKALIKE,
+    "LOOKALIKE-NEAR-MISS": _LOOKALIKE,
+    "LOOKALIKE-CONTAINS-BRAND": _LOOKALIKE,
+    "REPLYTO-MISMATCH": (
+        "Don't reply. Contact the apparent sender through a known phone number or address, "
+        "especially if the message asks to change payment or banking details."),
+    "DISPLAY-NAME-ADDRESS": _DISPLAY,
+    "DISPLAY-NAME-BRAND": _DISPLAY,
+    "HOP-OUT-OF-ORDER": (
+        "Treat Received hops below your gateway as forged. Trust only your gateway's record "
+        "of the sending IP."),
+    "BOUNDARY-IP-NONROUTABLE": (
+        "Check your gateway's connection logs for the true source of this message."),
+    "AUTH-UNTRUSTED-ONLY": (
+        "Set trusted_authserv_ids in your config to your inbound mail server, then re-run."),
+}
+
+
+def recommended_actions(findings: list[Finding]) -> list[dict]:
+    """One entry per distinct action, in finding order, listing which checks call for it."""
+    actions: dict[str, list[str]] = {}
+    for f in findings:
+        text = ACTIONS.get(f.check_id)
+        if text:
+            actions.setdefault(text, []).append(f.check_id)
+    return [{"action": text, "because": ids} for text, ids in actions.items()]
+
+
 NOTES = [
     "DKIM signatures were not verified locally. Verdicts are those recorded by the receiving server.",
     "Headers added before your organization's mail gateway can be forged by the sender.",
@@ -52,6 +99,8 @@ def build_report(parsed: ParsedHeaders, config: Config | None = None,
         "source": parsed.source,
         "analyzed_at": analyzed_at.astimezone(timezone.utc).isoformat() if analyzed_at else None,
         "risk": asdict(risk),
+        "headline_note": HEADLINE_NOTE,
+        "recommended_actions": recommended_actions(findings),
         "summary": {
             "subject": parsed.subject,
             "date": parsed.date.isoformat() if parsed.date else None,
@@ -155,11 +204,20 @@ def to_markdown(report: dict, do_defang: bool = True) -> str:
 
     add(f"# Phishing Header Analysis: {_cell(report['source'], False)}")
     add("")
-    add(f"**Risk: {r['level'].upper()} ({r['score']}/100)**")
+    add(f"**Header risk: {r['level'].upper()} ({r['score']}/100)**")
+    add("")
+    add(f"_{report['headline_note']}_")
     add("")
     for reason in r["reasons"]:
         add(f"- {reason}")
     add("")
+
+    if report["recommended_actions"]:
+        add("## Recommended Actions")
+        add("")
+        for i, item in enumerate(report["recommended_actions"], start=1):
+            add(f"{i}. {item['action']} _({', '.join(item['because'])})_")
+        add("")
 
     add("## Message")
     add("")
