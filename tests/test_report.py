@@ -132,6 +132,8 @@ class MarkdownTests(unittest.TestCase):
         self.assertEqual(defang("mail.contoso.example 10.0.0.1"), "mail[.]contoso[.]example 10[.]0[.]0[.]1")
         self.assertEqual(defang("e.g. this"), "e.g. this")
         self.assertEqual(defang("https://a.example/x"), "hxxps://a[.]example/x")
+        self.assertEqual(defang("first.last@mail.contoso.example"), "first.last@mail[.]contoso[.]example")
+        self.assertEqual(defang("<20261019.fe74@centraprise.example>"), "<20261019.fe74@centraprise[.]example>")
 
 
 if __name__ == "__main__":

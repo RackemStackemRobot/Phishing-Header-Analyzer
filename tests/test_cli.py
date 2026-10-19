@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from phishing_header_analyzer.main import EXIT_ERROR, EXIT_OK, EXIT_RISK, main
+from phishing_header_analyzer.main import EXIT_CANCELLED, EXIT_ERROR, EXIT_OK, EXIT_RISK, main
 
 ROOT = Path(__file__).parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -61,6 +61,82 @@ class CliTests(unittest.TestCase):
         self.assertEqual(run([str(FIXTURES / "spf_fail.eml"), "--fail-on", "high", *cfg])[0], EXIT_RISK)
         self.assertEqual(run([str(FIXTURES / "clean.eml"), "--fail-on", "medium", *cfg])[0], EXIT_OK)
         self.assertEqual(run([str(FIXTURES / "clean.eml"), "--fail-on", "low", *cfg])[0], EXIT_RISK)
+
+
+def run_at_keyboard(args, key):
+    """Simulate a person at a terminal pressing one key at the body-inspection prompt."""
+    out, err = io.BytesIO(), io.StringIO()
+
+    def reader():
+        if isinstance(key, BaseException):
+            raise key
+        return key
+
+    code = main(args, stdin=io.BytesIO(b""), stdout=out, stderr=err, interactive=True, key_reader=reader)
+    return code, out.getvalue().decode("utf-8"), err.getvalue()
+
+
+def never_called():
+    raise AssertionError("prompt shown when it shouldn't be")
+
+
+class BodyPromptTests(unittest.TestCase):
+    ARGS = [str(FIXTURES / "clean.eml"), "--config", str(EXAMPLE_CONFIG)]
+
+    def test_y_inspects_body(self):
+        code, out, err = run_at_keyboard(self.ARGS, "y")
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("Inspect the message body too?", err)
+        self.assertTrue(json.loads(out)["body"]["inspected"])
+
+    def test_uppercase_y_too(self):
+        self.assertTrue(json.loads(run_at_keyboard(self.ARGS, "Y")[1])["body"]["inspected"])
+
+    def test_n_is_headers_only(self):
+        code, out, _ = run_at_keyboard(self.ARGS, "n")
+        self.assertEqual(code, EXIT_OK)
+        self.assertFalse(json.loads(out)["body"]["inspected"])
+
+    def test_esc_cancels(self):
+        code, out, err = run_at_keyboard(self.ARGS, "\x1b")
+        self.assertEqual((code, out), (EXIT_CANCELLED, ""))
+        self.assertIn("Cancelled", err)
+
+    def test_any_other_key_cancels(self):
+        for key in ("q", "\r", " ", "1", ""):
+            with self.subTest(key=repr(key)):
+                self.assertEqual(run_at_keyboard(self.ARGS, key)[0], EXIT_CANCELLED)
+
+    def test_ctrl_c_cancels(self):
+        self.assertEqual(run_at_keyboard(self.ARGS, KeyboardInterrupt())[0], EXIT_CANCELLED)
+
+    def test_cancel_writes_no_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            target = Path(d) / "report.md"
+            run_at_keyboard([*self.ARGS, "--out", str(target)], "\x1b")
+            self.assertFalse(target.exists())
+
+    def test_flags_skip_the_prompt(self):
+        for flag, expected in (("--inspect-body", True), ("--headers-only", False)):
+            with self.subTest(flag=flag):
+                out, err = io.BytesIO(), io.StringIO()
+                code = main([*self.ARGS, flag], stdout=out, stderr=err,
+                            interactive=True, key_reader=never_called)
+                self.assertEqual(code, EXIT_OK)
+                self.assertEqual(json.loads(out.getvalue())["body"]["inspected"], expected)
+
+    def test_flags_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit) as ctx:
+            run([*self.ARGS, "--inspect-body", "--headers-only"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_scripts_never_prompt_and_stay_headers_only(self):
+        out, err = io.BytesIO(), io.StringIO()
+        code = main(self.ARGS, stdin=io.BytesIO(b""), stdout=out, stderr=err,
+                    interactive=False, key_reader=never_called)
+        self.assertEqual(code, EXIT_OK)
+        self.assertNotIn("Inspect", err.getvalue())
+        self.assertFalse(json.loads(out.getvalue())["body"]["inspected"])
 
 
 class CliErrorTests(unittest.TestCase):

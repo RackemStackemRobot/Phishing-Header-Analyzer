@@ -8,6 +8,7 @@ This tool is designed to be safe by default:
 
 - It works fully offline. It makes no DNS queries or network requests.
 - It never opens links or attachments in the message.
+- It reads the message body only if you say yes (see Body inspection).
 - It does not upload data anywhere.
 - It is intended for defensive triage and analyst training.
 
@@ -43,6 +44,25 @@ This tool is designed to be safe by default:
 
 - Authentic notifications from platforms attackers abuse to deliver lures: Google Groups invites, Google Drive shares, SharePoint/OneDrive, DocuSign, Adobe Sign, Dropbox, PayPal invoices, QuickBooks invoices, GitHub, and others (editable list)
 - These pass SPF, DKIM, and DMARC because the platform really sent them. The finding tells the analyst to verify the account that triggered the notification, not the platform
+
+### Body inspection (opt-in)
+
+At a terminal, the tool asks before reading the message body. Answer `y` to inspect it, `n` for headers only, or press Esc (or any other key) to cancel. Scripts and piped input are never prompted and stay headers-only unless `--inspect-body` is passed.
+
+With body inspection on, it also checks:
+
+- Platform notifications that link outside the platform (a "Google Groups" invite linking to some other site)
+- The accounts named inside platform notifications (the inviter, the group address), listed as indicators to verify or report
+- Link text that shows one site but goes to another
+- Links to bare IP addresses
+- Lookalike link domains, using the same homoglyph and typo checks as sender domains
+
+How it stays safe:
+
+- Only text and HTML parts are read. Attachments are skipped, never opened.
+- HTML is read as text. Nothing is rendered, no scripts run, no images load, and **no link is ever visited**. The tool contains no networking code, and a test blocks all network access during analysis to prove it on every commit.
+- Reports contain link **domains** only, never full URLs. Phishing URLs often carry per-recipient tracking tokens; leaving them out means no one can click one from a ticket and confirm to the attacker that the target is live.
+- Body text is capped at 5 million characters.
 
 ## Note on DKIM
 
@@ -81,4 +101,3 @@ See [HOW_TO_RUN.md](HOW_TO_RUN.md) for install steps, all options, and the confi
 ## Safety note
 
 This is not an offensive tool. It analyzes headers of messages you already received so you can decide whether they are malicious and respond.
-

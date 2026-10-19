@@ -48,6 +48,23 @@ DEFAULT_PLATFORM_SENDERS = {
 }
 
 
+# Domains each platform legitimately links to, keyed by the registrable domain of
+# its sending address. Links from a platform notification to anything else are
+# flagged. Extend this when real notifications produce false positives.
+DEFAULT_PLATFORM_LINK_DOMAINS = {
+    "google.com": ["google.com", "googlegroups.com", "gstatic.com", "googleusercontent.com", "withgoogle.com"],
+    "sharepointonline.com": ["sharepoint.com", "sharepointonline.com", "microsoft.com", "office.com",
+                             "microsoftonline.com", "live.com", "office365.com"],
+    "docusign.net": ["docusign.net", "docusign.com"],
+    "echosign.com": ["echosign.com", "adobesign.com", "adobe.com"],
+    "adobesign.com": ["echosign.com", "adobesign.com", "adobe.com"],
+    "dropbox.com": ["dropbox.com", "dropboxusercontent.com"],
+    "paypal.com": ["paypal.com", "paypalobjects.com"],
+    "intuit.com": ["intuit.com", "quickbooks.com"],
+    "github.com": ["github.com", "githubusercontent.com"],
+}
+
+
 @dataclass
 class Config:
     # Brands and vendors to watch for impersonation and lookalikes.
@@ -63,6 +80,9 @@ class Config:
     # Notification platforms whose authenticated mail still needs a human to
     # check who triggered it. Pattern -> display name.
     platform_senders: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PLATFORM_SENDERS))
+    # Sender registrable domain -> domains its notifications legitimately link to.
+    platform_link_domains: dict[str, list[str]] = field(
+        default_factory=lambda: {k: list(v) for k, v in DEFAULT_PLATFORM_LINK_DOMAINS.items()})
 
     @property
     def watched_domains(self) -> list[str]:
@@ -88,6 +108,10 @@ class Config:
                 if not isinstance(value, dict):
                     raise ValueError("platform_senders must be an object of pattern: name pairs")
                 values[key] = {str(k).lower(): str(v) for k, v in value.items()}
+            elif key == "platform_link_domains":
+                if not isinstance(value, dict) or not all(isinstance(v, list) for v in value.values()):
+                    raise ValueError("platform_link_domains must be an object of domain: [domains] pairs")
+                values[key] = {str(k).lower(): [str(d).lower() for d in v] for k, v in value.items()}
             else:
                 if not isinstance(value, list):
                     raise ValueError(f"{key} must be a list")

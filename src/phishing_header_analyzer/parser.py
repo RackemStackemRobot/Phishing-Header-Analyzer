@@ -15,6 +15,7 @@ from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 
+from .body import BodyInfo, extract
 from .received import Hop, parse_chain
 
 
@@ -57,6 +58,8 @@ class ParsedHeaders:
     hops: list[Hop]
     x_originating_ip: str | None
     parse_notes: list[str] = field(default_factory=list)
+    recipients: list[Address] = field(default_factory=list)   # To, Cc, Delivered-To
+    body: BodyInfo | None = None                              # None = body not inspected
 
 
 # ---------- helpers ----------
@@ -135,7 +138,9 @@ def _message_id_domain(message_id: str | None) -> str | None:
 
 # ---------- public API ----------
 
-def parse_bytes(data: bytes, source: str = "<bytes>") -> ParsedHeaders:
+def parse_bytes(data: bytes, source: str = "<bytes>", inspect_body: bool = False) -> ParsedHeaders:
+    """Parse headers. With inspect_body=True, also extract link domains and addresses
+    from the text parts (see body.py for the safety model)."""
     msg: EmailMessage = BytesParser(policy=policy.default).parsebytes(data, headersonly=True)
     notes = [f"parser defect: {type(d).__name__}" for d in msg.defects]
 
@@ -170,9 +175,12 @@ def parse_bytes(data: bytes, source: str = "<bytes>") -> ParsedHeaders:
         hops=parse_chain(all_str("Received")),
         x_originating_ip=x_orig,
         parse_notes=notes,
+        recipients=_addresses((msg.get_all("To") or []) + (msg.get_all("Cc") or [])
+                              + (msg.get_all("Delivered-To") or [])),
+        body=extract(data) if inspect_body else None,
     )
 
 
-def parse_file(path: str | Path) -> ParsedHeaders:
+def parse_file(path: str | Path, inspect_body: bool = False) -> ParsedHeaders:
     path = Path(path)
-    return parse_bytes(path.read_bytes(), source=path.name)
+    return parse_bytes(path.read_bytes(), source=path.name, inspect_body=inspect_body)

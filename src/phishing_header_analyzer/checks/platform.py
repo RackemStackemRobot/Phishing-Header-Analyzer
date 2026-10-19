@@ -28,19 +28,25 @@ def match_platform(address: str | None, patterns: dict[str, str]) -> str | None:
     return None
 
 
-def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
+def authentic_platform(parsed: ParsedHeaders, config: Config) -> str | None:
+    """Platform name if this is a genuine (DMARC-passing) platform notification, else None.
+
+    A spoofed platform address fails DMARC and is already flagged by the
+    authentication checks, so it doesn't count here.
+    """
     frm = parsed.from_
     name = match_platform(frm.address if frm else None, config.platform_senders)
     if not name:
-        return []
-
-    # Only applies when the platform really sent it. A spoofed platform address
-    # fails DMARC and is already flagged by the authentication checks.
+        return None
     results, _ = trusted_results(parsed, config)
     dmarc = next((r for r in results if r.method == "dmarc"), None)
-    if not dmarc or dmarc.result != "pass":
-        return []
+    return name if dmarc and dmarc.result == "pass" else None
 
+
+def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
+    name = authentic_platform(parsed, config)
+    if not name:
+        return []
     return [Finding(
         "PLATFORM-NOTIFICATION", CATEGORY, "medium", 20,
         f"Authentic {name} notification sent on behalf of another account",
@@ -48,5 +54,5 @@ def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
         "That authenticates the platform, not the account that triggered the notification. "
         "Attackers create real groups, shares, envelopes, and invoices so the platform "
         "delivers their lure for them.",
-        {"platform": name, "from": frm.address},
+        {"platform": name, "from": parsed.from_.address},
     )]

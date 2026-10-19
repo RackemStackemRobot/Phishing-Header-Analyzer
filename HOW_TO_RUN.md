@@ -48,6 +48,21 @@ phishing-header-analyzer message.eml --config my-org.json
 phishing-header-analyzer - < headers.txt
 ```
 
+## The body-inspection prompt
+
+When you run it at a terminal, it asks:
+
+```
+Inspect the message body too? This reads the text parts only, to list link domains
+and the accounts behind platform notifications. Nothing is opened, rendered, or visited.
+  y = yes   n = headers only   Esc or any other key = cancel
+>
+```
+
+It's a single keypress; no Enter needed. Anything typed before the question appears is ignored, so a stray keypress can't answer it. Cancelling writes no report and exits with code 4.
+
+To skip the question, pass `--inspect-body` or `--headers-only`. Scripts, scheduled jobs, and piped input (`-`) are never prompted and run headers-only unless `--inspect-body` is given.
+
 ## Options
 
 | Option | What it does |
@@ -55,6 +70,8 @@ phishing-header-analyzer - < headers.txt
 | `--format json` or `md` | Report format. Default is `json`. |
 | `--out PATH` | Write the report to a file instead of the screen. |
 | `--config PATH` | Load settings from a JSON file (see below). |
+| `--inspect-body` | Also inspect the message body, without asking. |
+| `--headers-only` | Analyze headers only, without asking. |
 | `--no-defang` | Leave domains, IPs, and URLs clickable in Markdown output. |
 | `--no-timestamp` | Leave out the analysis time so repeat runs give identical output. |
 | `--fail-on LEVEL` | Exit with code 3 if the risk is at or above `low`, `medium`, or `high`. |
@@ -71,6 +88,7 @@ Copy `examples/config.example.json` and edit it. Every key is optional; anything
 | `freemail_domains` | Free mail providers. A Reply-To pointing at one of these is weighted higher. Replaces the built-in list. |
 | `trusted_authserv_ids` | Hostnames of your own inbound mail servers. Only Authentication-Results headers stamped by these are trusted. If left empty, the topmost Authentication-Results header is trusted and the report says so. |
 | `platform_senders` | Notification services whose authentic mail still needs a human check (Google Groups, DocuSign, PayPal invoices, and others). An object of `"address pattern": "display name"` pairs; `*` is a wildcard. Replaces the built-in list. |
+| `platform_link_domains` | Domains each platform legitimately links to, keyed by its sending domain, for example `"google.com": ["google.com", "googlegroups.com", "gstatic.com"]`. Links from a platform notification to anything else are flagged. If a real notification gets flagged for a link it legitimately uses, add that domain here. Replaces the built-in list. |
 
 Setting `trusted_authserv_ids` is the most important step for accurate results, because it stops forged authentication headers from being believed.
 
@@ -96,6 +114,7 @@ Example `platform_senders` entry:
 | 1 | Input or config error (missing file, empty input, not an email, bad JSON) |
 | 2 | Invalid command-line options |
 | 3 | Risk met or exceeded the `--fail-on` level |
+| 4 | Cancelled at the body-inspection prompt |
 
 `--fail-on` lets you use the tool in scripts and mail-triage pipelines, for example to route high-risk messages to an analyst queue.
 
@@ -104,4 +123,3 @@ Example `platform_senders` entry:
 ```bash
 python -m unittest discover -s tests -v
 ```
-
