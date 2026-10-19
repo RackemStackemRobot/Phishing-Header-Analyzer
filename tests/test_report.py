@@ -89,8 +89,18 @@ class ReportStructureTests(unittest.TestCase):
 class MarkdownTests(unittest.TestCase):
     def test_clean_has_no_findings(self):
         md = to_markdown(build_report(parse_file(FIXTURES / "clean.eml"), fixture_config()))
-        self.assertIn("**Risk: LOW (0/100)**", md)
+        self.assertIn("**Header risk: LOW (0/100)**", md)
+        self.assertIn("not whether its content is safe", md)  # caveat shown even when clean
         self.assertIn("No findings.", md)
+        self.assertNotIn("## Recommended Actions", md)
+
+    def test_recommended_actions_deduplicated(self):
+        report = build_report(parse_file(FIXTURES / "spf_fail.eml"), fixture_config())
+        actions = report["recommended_actions"]
+        texts = [a["action"] for a in actions]
+        self.assertEqual(len(texts), len(set(texts)))
+        spoof = next(a for a in actions if "spoofed" in a["action"])
+        self.assertEqual(spoof["because"], ["DMARC-FAIL", "SPF-FAIL"])
 
     def test_domains_and_ips_defanged(self):
         md = to_markdown(build_report(parse_file(FIXTURES / "spf_fail.eml"), fixture_config()))
