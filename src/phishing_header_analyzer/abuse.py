@@ -18,13 +18,13 @@ person sending them reviews and signs them. There is no code here that sends mai
 
 from __future__ import annotations
 
+import quopri
 import re
+import secrets
 from dataclasses import dataclass, field
 from email import message_from_bytes, policy
+from email.header import Header
 from email.message import Message
-from email.mime.message import MIMEMessage
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from email.utils import format_datetime
 from pathlib import Path
 
@@ -147,7 +147,8 @@ def compose_text(report: dict, r: Recipient) -> tuple[str, str]:
     subject = f"Abuse report: phishing or fraud email from {s['from']['domain'] if s['from'] else 'unknown sender'}"
     lost = report.get("headers_lost")
 
-    lines = [f"To the {r.name} abuse team,", "",
+    greeting = f"To the {r.name}," if r.kind == "apwg" else f"To the {r.name} abuse team,"
+    lines = [greeting, "",
              "This report concerns an email identified as phishing or fraud. " + r.relation]
     if lost:
         lines.append("The message is attached, but it was forwarded inline before it reached the reporter, "
@@ -206,22 +207,51 @@ def _feedback_report(report: dict, raw_msg: Message) -> Message:
     return part
 
 
+def _text_part(text: str) -> bytes:
+    """Readable as-is wherever possible: 7bit for plain ASCII, quoted-printable otherwise.
+    Abuse desks often process reports with scripts or read them raw, so no base64."""
+    if text.isascii():
+        return (b"Content-Type: text/plain; charset=us-ascii\nContent-Transfer-Encoding: 7bit\n\n"
+                + text.encode("ascii"))
+    return (b"Content-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: quoted-printable\n\n"
+            + quopri.encodestring(text.encode("utf-8")))
+
+
+def build_eml(to: str, subject: str, text: str, feedback: Message, raw: bytes) -> bytes:
+    """Assemble the ARF report by hand so the original is inserted byte for byte.
+
+    Re-serializing the original through Python's email library re-wraps long
+    headers. The attachment is evidence: abuse desks verify its DKIM signatures to
+    confirm it's genuine, and strictly signed mail fails once headers are re-wrapped.
+    """
+    boundary = "=_pha_" + secrets.token_hex(12)
+    while boundary.encode() in raw:   # vanishingly unlikely, but never collide with the evidence
+        boundary = "=_pha_" + secrets.token_hex(12)
+    b = boundary.encode()
+    subject_header = Header(subject, "utf-8" if not subject.isascii() else "us-ascii").encode(maxlinelen=76)
+    head = ["MIME-Version: 1.0",
+            f'Content-Type: multipart/report; report-type="feedback-report";\n boundary="{boundary}"',
+            f"Subject: {subject_header}"]
+    if to:
+        head.append(f"To: {to}")
+    head.append("X-Unsent: 1")   # Outlook opens this as an editable draft
+    out = "\n".join(head).encode("ascii") + b"\n\nThis is an abuse report in the Abuse Reporting Format (RFC 5965).\n"
+    out += b"\n--" + b + b"\n" + _text_part(text) + b"\n"
+    out += b"\n--" + b + b"\nContent-Type: message/feedback-report\n\n" + feedback.get_payload().encode("ascii", "replace")
+    out += b"\n--" + b + b"\nContent-Type: message/rfc822\nContent-Disposition: attachment; filename=\"original.eml\"\n\n"
+    out += raw if raw.endswith(b"\n") else raw + b"\n"
+    out += b"\n--" + b + b"--\n"
+    return out
+
+
 def build_drafts(report: dict, primary: ParsedHeaders) -> list[Draft]:
     raw = primary.raw or b""
     drafts = []
     for r in recipients(report):
         subject, text = compose_text(report, r)
-        outer = MIMEMultipart("report")
-        outer.set_param("report-type", "feedback-report")
-        outer["Subject"] = subject
-        if r.email:
-            outer["To"] = r.email
-        outer["X-Unsent"] = "1"            # Outlook opens this as an editable draft
-        outer.attach(MIMEText(text, "plain", "utf-8"))
         original = message_from_bytes(raw, policy=policy.compat32) if raw else Message()
-        outer.attach(_feedback_report(report, original))
-        outer.attach(MIMEMessage(original))
-        drafts.append(Draft(r, subject, text, outer.as_bytes()))
+        eml = build_eml(r.email, subject, text, _feedback_report(report, original), raw)
+        drafts.append(Draft(r, subject, text, eml))
     return drafts
 
 

@@ -12,7 +12,7 @@ This tool is designed to be safe by default:
 - It does not upload data anywhere.
 - It is intended for defensive triage and analyst training.
 
-## What it checks (v0.1)
+## What it checks
 
 ### Authentication results
 

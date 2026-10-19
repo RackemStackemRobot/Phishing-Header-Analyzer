@@ -217,6 +217,26 @@ class AbuseReportTests(unittest.TestCase):
         self.assertIn(b"Feedback-Type: fraud", raw)
         self.assertIn(b"Source-IP: 159.183.199.221", raw)
 
+    def test_original_attached_byte_for_byte(self):
+        # The attachment is evidence: re-wrapped headers can break DKIM verification.
+        long_header = b"X-Long: " + b"word " * 40 + b"\n"
+        raw = MESSAGE.replace(b"MIME-Version: 1.0\n", long_header + b"MIME-Version: 1.0\n", 1)
+        report, primary = analyze_message(parse_bytes(raw, inspect_body=True), GMAIL)
+        for eml in (p for p in write_drafts(report, primary, self.dir) if p.name.startswith("0") and p.suffix == ".eml"):
+            self.assertIn(raw, eml.read_bytes())
+
+    def test_explanation_is_readable_without_decoding(self):
+        written = write_drafts(self.report, self.primary, self.dir)
+        eml = next(p for p in written if p.name.startswith("01-") and p.suffix == ".eml").read_bytes()
+        self.assertIn(b"Content-Transfer-Encoding: 7bit", eml)
+        self.assertNotIn(b"Content-Transfer-Encoding: base64", eml.split(b"message/rfc822")[0])
+        self.assertIn(b"Requested action", eml)
+
+    def test_apwg_greeting(self):
+        write_drafts(self.report, self.primary, self.dir)
+        apwg = next(Path(self.dir).glob("*apwg*.txt")).read_text(encoding="utf-8")
+        self.assertIn("To the Anti-Phishing Working Group,\n", apwg)
+
     def test_drafts_are_neutral_and_never_sent(self):
         write_drafts(self.report, self.primary, self.dir)
         for txt in Path(self.dir).glob("0*.txt"):
