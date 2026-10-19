@@ -13,13 +13,28 @@ from __future__ import annotations
 import ipaddress
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 _FROM_RE = re.compile(r"\bfrom\s+(\S+)", re.IGNORECASE)
 _BY_RE = re.compile(r"\bby\s+(\S+)", re.IGNORECASE)
 _WITH_RE = re.compile(r"\bwith\s+(\S+)", re.IGNORECASE)
 _IP_RE = re.compile(r"\[(?:IPv6:)?([0-9A-Fa-f:.]+)\]")
+_FRACTION_RE = re.compile(r"(\d{1,2}:\d{2}:\d{2})\.\d+")
+_ISO_TS_RE = re.compile(
+    r"(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?\s*(?:([+-]\d{2}):?(\d{2})|Z\b|UTC\b)?")
+
+
+def _parse_iso(m: re.Match) -> datetime | None:
+    try:
+        ts = datetime.strptime(f"{m.group(1)} {m.group(2)}", "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    if m.group(3):
+        sign = -1 if m.group(3).startswith("-") else 1
+        offset = timedelta(hours=int(m.group(3)[1:]), minutes=int(m.group(4)))
+        ts = (ts - sign * offset)
+    return ts.replace(tzinfo=timezone.utc)
 
 
 @dataclass
@@ -52,7 +67,12 @@ def parse_received(value: str) -> Hop:
     clauses, sep, date_part = raw.rpartition(";")
     if not sep:
         clauses, date_part = raw, ""
-        hop.parse_notes.append("no timestamp found")
+        # Some internal relays (SendGrid's, for one) skip the semicolon and write
+        # an ISO-style time instead: "2026-10-19 15:19:12.122905 +0000 UTC".
+        if m := _ISO_TS_RE.search(raw):
+            hop.timestamp = _parse_iso(m)
+        if hop.timestamp is None:
+            hop.parse_notes.append("no timestamp found")
 
     # Only look for the sending IP inside the "from" clause, not the "by" clause.
     by_match = _BY_RE.search(clauses)
@@ -71,7 +91,8 @@ def parse_received(value: str) -> Hop:
 
     if date_part.strip():
         try:
-            ts = parsedate_to_datetime(date_part.strip())
+            # Drop fractional seconds ("15:19:12.105"); the RFC 5322 parser rejects them.
+            ts = parsedate_to_datetime(_FRACTION_RE.sub(r"\1", date_part.strip()))
             if ts.tzinfo is None:
                 hop.timestamp_had_tz = False
                 ts = ts.replace(tzinfo=timezone.utc)
