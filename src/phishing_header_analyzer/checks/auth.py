@@ -29,6 +29,21 @@ def _first(results: list[AuthResult], method: str) -> AuthResult | None:
     return next((r for r in results if r.method == method), None)
 
 
+def dkim_signing_domain(result: AuthResult) -> str | None:
+    """The domain that made a DKIM signature.
+
+    Most servers record it as header.d=example.com. Gmail records header.i=@example.com
+    (the signing identity, which RFC 6376 requires to be within the d= domain).
+    """
+    d = result.properties.get("header.d")
+    if d:
+        return d.lower().rstrip(".")
+    i = result.properties.get("header.i")
+    if i and "@" in i:
+        return i.rsplit("@", 1)[1].lower().rstrip(".") or None
+    return None
+
+
 def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
     out: list[Finding] = []
     results, basis = trusted_results(parsed, config)
@@ -91,18 +106,17 @@ def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
             "A signature was present but did not verify. The message may have been "
             "altered or the signature forged.",
             {"results": [r.result for r in dkims],
-             "signing_domains": [r.properties.get("header.d") for r in dkims]},
+             "signing_domains": [dkim_signing_domain(r) for r in dkims]},
         ))
     elif from_domain and not any(
-        r.properties.get("header.d") and (is_within(from_domain, r.properties["header.d"])
-                                          or is_within(r.properties["header.d"], from_domain))
+        (sd := dkim_signing_domain(r)) and (is_within(from_domain, sd) or is_within(sd, from_domain))
         for r in passing
     ):
         out.append(Finding(
             "DKIM-UNALIGNED", CATEGORY, "low", 5, "DKIM passed for a different domain than From",
             "The signature is valid, but it was made by a domain other than the one in "
             "the From address. Common with mailing services, also common in phishing.",
-            {"from_domain": from_domain, "signing_domains": [r.properties.get("header.d") for r in passing]},
+            {"from_domain": from_domain, "signing_domains": [dkim_signing_domain(r) for r in passing]},
         ))
 
     # DMARC
