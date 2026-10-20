@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "phishing-header-analyzer"
 version = "0.2.1"
-description = "Defensive email header analyzer for phishing triage. Outputs JSON/Markdown reports."
+description = "Defensive CLI that analyzes phishing email headers and drafts abuse reports. Python stdlib only."
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "John Black" }]
