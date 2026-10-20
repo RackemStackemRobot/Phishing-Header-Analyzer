@@ -73,8 +73,8 @@ ACTIONS = {
         "Block these link domains at the web proxy and mail gateway, and search mail logs for "
         "other messages linking to them:"),
     "LINK-TEXT-MISMATCH": (
-        "Treat the message as phishing: its link text disguises where the links go. Block the "
-        "real destinations:"),
+        "Don't trust the link text: these links go somewhere other than they show. Unless the "
+        "sender is verified, block the real destinations:"),
     "LINK-IP-LITERAL": "Block these IP addresses at the web proxy:",
     "FORWARD-INLINE": (
         "Get the original as an attachment so its full headers can be checked: in Gmail on a "
@@ -115,13 +115,28 @@ _SUBJECTS = {
 }
 
 
-def recommended_actions(findings: list[Finding]) -> list[dict]:
+# Registrar and network contacts are found for every message when --live runs, so on a
+# message with no sign of abuse they're folded into one line instead of listed as things
+# to do. The bulk-mail step stays: reporting unwanted mail to the service is useful even
+# when the headers are clean.
+_REPORTING = ("DOMAIN-REGISTRAR-ABUSE", "NETWORK-ABUSE")
+_REPORTING_IF_NEEDED = (
+    "No signs of abuse were found, so no reports are suggested. If you still judge this message "
+    "malicious, --abuse-reports drafts reports to the contacts listed under Findings.")
+
+
+def recommended_actions(findings: list[Finding], level: str | None = None) -> list[dict]:
     """One entry per distinct action, in finding order, listing which checks call for it
     and the specific accounts, domains, or IPs it applies to."""
     ids = {f.check_id for f in findings}
     actions: dict[str, dict] = {}
+    held: list[str] = []
     for f in findings:
         check_id = f.check_id
+        if level == "low" and check_id in _REPORTING:
+            if check_id not in held:
+                held.append(check_id)
+            continue
         # Once the body has named the accounts, the generic "find the account" step is redundant.
         if check_id == "PLATFORM-NOTIFICATION" and "PLATFORM-ACCOUNTS" in ids:
             continue
@@ -135,6 +150,8 @@ def recommended_actions(findings: list[Finding]) -> list[dict]:
                 entry["subjects"].append(s)
     if "PLATFORM-ACCOUNTS" in ids and "PLATFORM-NOTIFICATION" in ids:
         actions[ACTIONS["PLATFORM-ACCOUNTS"]]["because"].insert(0, "PLATFORM-NOTIFICATION")
+    if held:
+        actions[_REPORTING_IF_NEEDED] = {"action": _REPORTING_IF_NEEDED, "because": held, "subjects": []}
     return list(actions.values())
 
 
@@ -201,7 +218,7 @@ def analyze_message(parsed: ParsedHeaders, config: Config | None = None,
         "headline_note": HEADLINE_NOTE,
         "forward_note": FORWARD_NOTES.get(parsed.forward.kind) if parsed.forward else None,
         "forward": asdict(parsed.forward) if parsed.forward else None,
-        "recommended_actions": recommended_actions(findings),
+        "recommended_actions": recommended_actions(findings, risk.level),
         "summary": {
             "subject": parsed.subject,
             "date": parsed.date.isoformat() if parsed.date else None,

@@ -26,7 +26,7 @@ from typing import Callable
 
 from . import __version__
 from .config import Config
-from .util import classify_ip, org_domain
+from .util import classify_ip, is_within, org_domain
 
 BOOTSTRAP = {
     "dns": "https://data.iana.org/rdap/dns.json",
@@ -277,8 +277,29 @@ class Rdap:
 
 # ---------- what to look up ----------
 
+# Sites that show up as footer and social links in legitimate mail. Their registrars
+# can't act on a phishing campaign, so looking them up only adds noise.
+WELL_KNOWN_DOMAINS = (
+    "facebook.com", "instagram.com", "linkedin.com", "twitter.com", "x.com", "youtube.com",
+    "tiktok.com", "pinterest.com", "threads.net", "google.com", "microsoft.com", "apple.com",
+    "amazon.com", "onetrust.com", "eightfold.ai",
+)
+
+# Mail filtering services that receive mail for an organization and pass it on. When one
+# is the last hop before your gateway, its IP is the recipient's own filter, not the sender.
+FILTER_RELAY_DOMAINS = (
+    "pphosted.com", "gpphosted.com", "mimecast.com", "barracudanetworks.com",
+    "messagelabs.com", "iphmx.com", "mailcontrol.com", "trendmicro.com",
+)
+
+
 def _skip_domains(config: Config) -> set[str]:
+    from .checks.esp import SERVICES     # local import avoids a cycle at load time
     skip = {org_domain(d) for d in config.watched_domains + config.freemail_domains}
+    skip.update(org_domain(d) for d in WELL_KNOWN_DOMAINS)
+    for svc in SERVICES:
+        skip.update(org_domain(d) for d in
+                    svc.dkim_domains + svc.relay_domains + svc.sender_domains + svc.tracking_domains)
     for sender, family in config.platform_link_domains.items():
         skip.add(org_domain(sender))
         skip.update(org_domain(d) for d in family)
@@ -314,7 +335,7 @@ def targets(parsed, config: Config) -> tuple[list[str], list[str]]:
     ips: list[str] = []
     candidates = []
     hop = boundary_hop(parsed, config)
-    if hop and hop.from_ip:
+    if hop and hop.from_ip and not any(is_within(hop.from_host or "", d) for d in FILTER_RELAY_DOMAINS):
         candidates.append(hop.from_ip)
     if parsed.x_originating_ip:
         candidates.append(parsed.x_originating_ip)

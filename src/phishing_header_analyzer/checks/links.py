@@ -8,7 +8,8 @@ from __future__ import annotations
 from ..config import Config
 from ..findings import Finding
 from ..parser import ParsedHeaders
-from ..util import NON_ROUTABLE, classify_ip, org_domain, same_org
+from ..util import NON_ROUTABLE, classify_ip, is_within, org_domain, same_org
+from .esp import TRACKING_DOMAINS
 from .lookalike import assess_domain
 from .platform import authentic_platform
 
@@ -55,14 +56,50 @@ def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
         return []
     out: list[Finding] = []
 
-    if body.mismatches:
+    sender = parsed.from_.domain if parsed.from_ else None
+    disguised, own, tracked = [], [], {}
+    for m in body.mismatches:
+        shows_brand = any(is_within(m.shown, w) for w in config.watched_domains)
+        if sender and same_org(m.actual, sender) and not shows_brand:
+            own.append(m)    # the sender's own site under an old or alternate name
+            continue
+        service = next((name for d, name in TRACKING_DOMAINS.items() if is_within(m.actual, d)), None)
+        if service and sender and same_org(m.shown, sender):
+            # The sender's own site, rewritten through its mail platform's click tracker.
+            # Text naming anyone else's site stays a disguise, tracker or not.
+            tracked.setdefault(service, []).append(m)
+        else:
+            disguised.append(m)
+
+    if disguised:
         out.append(Finding(
             "LINK-TEXT-MISMATCH", CATEGORY, "high", 20,
             "Link text shows one site but goes to another",
             "The visible text of a link names one domain while the link itself points "
             "somewhere else. Legitimate mail almost never does this; it's a classic "
             "credential-phishing disguise.",
-            {"links": [{"shown": m.shown, "goes_to": m.actual} for m in body.mismatches[:MAX_LISTED]]},
+            {"links": [{"shown": m.shown, "goes_to": m.actual} for m in disguised[:MAX_LISTED]]},
+        ))
+    if own:
+        out.append(Finding(
+            "LINK-TEXT-OWN-DOMAIN", CATEGORY, "low", 5,
+            "Link text names a different site, but the link goes to the sender's own domain",
+            "The visible text shows another domain, often an old brand name or a sister site, "
+            "while the link goes to the sending domain itself. Usually an outdated template, not "
+            "a disguise, but it's the same pattern phishing uses, so it's worth fixing.",
+            {"links": [{"shown": m.shown, "goes_to": m.actual} for m in own[:MAX_LISTED]]},
+        ))
+    for service, items in tracked.items():
+        shown = sorted({m.shown for m in items})
+        out.append(Finding(
+            "LINK-TRACKED", CATEGORY, "low", 5,
+            f"Links labeled {', '.join(shown[:3])} run through {service} click tracking",
+            f"The link text names one site, but the links go to {service}'s tracking servers "
+            "first, which then redirect. Common in marketing email, but the real destination "
+            "can't be checked from the email, and it trains readers to ignore the 'hover before "
+            "you click' test. A branded tracking domain (a subdomain of the sender's own) fixes it.",
+            {"service": service, "shown": shown[:MAX_LISTED],
+             "tracking_domains": sorted({m.actual for m in items})[:MAX_LISTED]},
         ))
 
     ip_links = sorted(d for d in body.link_domains

@@ -13,6 +13,19 @@ from ..util import decode_domain, decode_idna, is_within, levenshtein, org_label
 
 CATEGORY = "lookalike"
 
+# Top-level domains only verified organizations can register (.gov through get.gov, .mil by
+# the U.S. military, .edu by accredited U.S. institutions), plus government second levels
+# like gov.uk. Nobody can typosquat inside them, so near-miss spellings there are coincidence.
+RESTRICTED_TLDS = {"gov", "mil", "edu"}
+RESTRICTED_SECOND_LEVELS = {"gov", "mil", "gouv", "gob", "govt"}
+
+
+def restricted_domain(domain: str) -> bool:
+    labels = domain.lower().rstrip(".").split(".")
+    if labels[-1] in RESTRICTED_TLDS:
+        return True
+    return len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in RESTRICTED_SECOND_LEVELS
+
 
 def _sender_domains(parsed: ParsedHeaders) -> dict[str, list[str]]:
     """Map each sender-side domain to the headers it appeared in."""
@@ -31,6 +44,8 @@ def assess_domain(domain: str, watched: list[str], id_prefix: str = "",
     out: list[Finding] = []
     if any(is_within(domain, w) for w in watched):
         return out  # it IS a protected domain; authentication checks handle spoofing
+    if restricted_domain(domain):
+        return out  # can't be registered by outsiders
     context = context or {}
 
     if any(lbl.startswith("xn--") for lbl in domain.split(".")):

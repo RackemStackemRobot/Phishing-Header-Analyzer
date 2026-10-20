@@ -25,6 +25,9 @@ _MARKERS = re.compile(
     r")\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+# Markers only a forward produces. Outlook's "Original Message" line and underscore
+# separator also head quoted replies, so on their own they don't make a message a forward.
+_FORWARD_ONLY = re.compile(r"forwarded message|begin forwarded message", re.IGNORECASE)
 _FIELD = re.compile(r"^\s*>?\s*(From|Date|Sent|Subject|To|Cc|Reply-To)\s*:\s*(.*)$", re.IGNORECASE)
 _ANGLE = re.compile(r"^(.*?)<\s*([^<>\s]+@[^<>\s]+?)\s*>")
 _BARE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -41,6 +44,7 @@ class InlineForward:
     to: list[str] = field(default_factory=list)
     reply_to: str = ""
     depth: int = 1               # how many forward blocks were stacked
+    explicit: bool = False       # a forward-only marker was present, not just a reply separator
 
 
 @dataclass
@@ -58,7 +62,11 @@ class ForwardContext:
 def parse_address(value: str) -> tuple[str, str]:
     """(display name, address) from a forward-block line. Handles "Name <a@b>",
     unquoted "Last, First <a@b>", Outlook's "Name [mailto:a@b]", and bare addresses."""
-    value = re.sub(r"\[mailto:([^\]]+)\]", r"<\1>", value.strip())
+    value = value.strip()
+    # Outlook's HTML-to-text turns links into "a@b<mailto:a@b>"; keep one copy of the address.
+    value = re.sub(r"<\s*mailto:[^>]*>", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\[mailto:([^\]]+)\]", r"<\1>", value)
+    value = re.sub(r"\bmailto:", "", value, flags=re.IGNORECASE)
     m = _ANGLE.search(value)
     if m:
         name = m.group(1).strip().strip('"').strip()
@@ -108,15 +116,19 @@ def parse_inline_forward(text: str) -> InlineForward | None:
         return None
     text = text.replace("\r\n", "\n")
     found: list[InlineForward] = []
+    explicit = False
     for m in _MARKERS.finditer(text):
         fwd = _block(text[m.end():].split("\n")[1:60])
         if fwd:
             found.append(fwd)
+            explicit = explicit or bool(_FORWARD_ONLY.search(m.group(0)))
     if not found:
         return None
     innermost = found[-1]
     innermost.depth = len(found)
+    innermost.explicit = explicit
     return innermost
+
 
 
 def looks_forwarded(subject: str | None) -> bool:

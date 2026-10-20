@@ -50,13 +50,14 @@ class FixtureExpectationTests(unittest.TestCase):
 
     def test_replyto_mismatch(self):
         findings = run_fixture("replyto_mismatch.eml")
-        self.assertEqual(ids(findings), {"REPLYTO-MISMATCH", "DISPLAY-NAME-ADDRESS"})
+        self.assertEqual(ids(findings), {"REPLYTO-MISMATCH", "DISPLAY-NAME-ADDRESS",
+                                        "DMARC-MONITOR-ONLY"})  # the fixture domain is p=none
         replyto = next(f for f in findings if f.check_id == "REPLYTO-MISMATCH")
         self.assertEqual(replyto.severity, "high")  # free mail domain bumps it up
 
     def test_lookalike_domain(self):
         self.assertEqual(ids(run_fixture("lookalike_domain.eml")),
-                         {"LOOKALIKE-HOMOGLYPH", "DISPLAY-NAME-BRAND"})
+                         {"LOOKALIKE-HOMOGLYPH", "DISPLAY-NAME-BRAND", "DMARC-MONITOR-ONLY"})
 
     def test_headers_only(self):
         self.assertEqual(ids(run_fixture("headers_only.txt")),

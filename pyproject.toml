@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phishing-header-analyzer"
-version = "0.2.1"
+version = "0.2.2"
 description = "Defensive CLI that analyzes phishing email headers and drafts abuse reports. Python stdlib only."
 requires-python = ">=3.10"
 license = { text = "MIT" }

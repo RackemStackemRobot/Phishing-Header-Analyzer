@@ -13,6 +13,17 @@ from ..util import is_within
 
 CATEGORY = "authentication"
 
+_SPF_DETAIL = {
+    "fail": "The envelope sender's domain says this server is not allowed to send its mail.",
+    "softfail": ("The envelope sender's domain marks this server as probably not allowed to send "
+                 "its mail (~all), but doesn't ask for rejection."),
+    "neutral": "The envelope sender's domain makes no claim either way about this server.",
+    "none": ("The envelope sender's domain publishes no SPF record, so there's nothing to check "
+             "the sending server against."),
+    "permerror": "The envelope sender's SPF record is broken and couldn't be evaluated.",
+    "temperror": "The SPF lookup failed temporarily. Re-checking later may give a result.",
+}
+
 
 def trusted_results(parsed: ParsedHeaders, config: Config) -> tuple[list[AuthResult], str]:
     """Pick the Authentication-Results we can trust and explain how we chose them."""
@@ -91,7 +102,7 @@ def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
         sev, pts = spf_scores[spf.result]
         out.append(Finding(
             f"SPF-{spf.result.upper()}", CATEGORY, sev, pts, f"SPF result: {spf.result}",
-            "The sending server is not authorized by the envelope sender's domain to send its mail.",
+            _SPF_DETAIL[spf.result],
             {"smtp.mailfrom": spf.properties.get("smtp.mailfrom"), "authserv_id": spf.authserv_id},
         ))
 
@@ -114,12 +125,26 @@ def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
         (sd := dkim_signing_domain(r)) and (is_within(from_domain, sd) or is_within(sd, from_domain))
         for r in passing
     ):
-        out.append(Finding(
-            "DKIM-UNALIGNED", CATEGORY, "low", 5, "DKIM passed for a different domain than From",
-            "The signature is valid, but it was made by a domain other than the one in "
-            "the From address. Common with mailing services, also common in phishing.",
-            {"from_domain": from_domain, "signing_domains": [dkim_signing_domain(r) for r in passing]},
-        ))
+        from .esp import known_signer   # local import: esp imports from this module
+        signers = [dkim_signing_domain(r) for r in passing]
+        platforms = sorted({p for d in signers if (p := known_signer(d))})
+        if platforms and all(known_signer(d) for d in signers):
+            out.append(Finding(
+                "DKIM-PLATFORM-ONLY", CATEGORY, "info", 0,
+                f"Signed only by {', '.join(platforms)}, not by {from_domain}",
+                f"The only valid signature belongs to the sending platform. That's the platform's "
+                f"default setup; it proves the platform sent the message, not {from_domain}. "
+                f"Setting up custom DKIM so the platform signs as {from_domain} would let the "
+                "domain enforce DMARC without breaking this mail.",
+                {"from_domain": from_domain, "signing_domains": signers},
+            ))
+        else:
+            out.append(Finding(
+                "DKIM-UNALIGNED", CATEGORY, "low", 5, "DKIM passed for a different domain than From",
+                "The signature is valid, but it was made by a domain other than the one in "
+                "the From address. Common with mailing services, also common in phishing.",
+                {"from_domain": from_domain, "signing_domains": signers},
+            ))
 
     # DMARC
     dmarc = _first(results, "dmarc")
@@ -129,6 +154,14 @@ def run(parsed: ParsedHeaders, config: Config) -> list[Finding]:
             "The From domain has no DMARC policy, or none was evaluated, so spoofing "
             "of that domain is not being blocked.",
             {"from_domain": from_domain},
+        ))
+    elif dmarc.result == "pass" and (dmarc.policy or "").lower() == "none":
+        out.append(Finding(
+            "DMARC-MONITOR-ONLY", CATEGORY, "info", 0, "The sender's DMARC policy is monitor-only (p=none)",
+            "This message passed, but the domain tells receiving servers to deliver mail that "
+            "fails DMARC anyway. Anyone can spoof this domain without being rejected. A gap in "
+            "the sender's setup, not a sign this message is fake.",
+            {"from_domain": from_domain, "policy": dmarc.policy},
         ))
     elif dmarc.result in ("fail", "permerror", "temperror"):
         out.append(Finding(

@@ -45,6 +45,10 @@ def resolve(parsed: ParsedHeaders) -> ParsedHeaders:
         return current
 
     fwd = parsed.body.inline_forward if parsed.body else None
+    # A quoted reply chain ("Re:" with Outlook's From:/Sent: blocks) isn't a forward; the
+    # outer message is the one that was sent, and its headers are intact.
+    if fwd and not fwd.explicit and not looks_forwarded(parsed.subject):
+        fwd = None
     if fwd:
         name, address = fwd.from_name, fwd.from_address
         recipients = list(parsed.recipients) + [

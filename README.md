@@ -35,7 +35,7 @@ This tool is designed to be safe by default:
 
 - Each hop parsed into from, by, IP, and timestamp, shown in delivery order
 - Large delays between hops
-- Timestamps out of order
+- Timestamps out of order, told apart from a server whose time zone is simply set wrong (a hop off by exactly 4 hours that matches the Date header)
 - Private or reserved IP addresses where a public hop is expected
 
 ### Lookalike domains
@@ -43,13 +43,17 @@ This tool is designed to be safe by default:
 - Punycode / IDN domains
 - Homoglyph substitutions (for example `0` for `o`, `rn` for `m`)
 - Near-miss spellings of domains on an editable protected-brands list
+- `.gov`, `.mil`, and `.edu` domains are never flagged, since outsiders can't register them; with `--live`, spelling matches on domains registered for years are scored low
 
 ### Trusted-service abuse
 
 - Authentic notifications from platforms attackers abuse to deliver lures: Google Groups invites, Google Drive shares, SharePoint/OneDrive, DocuSign, Adobe Sign, Dropbox, PayPal invoices, QuickBooks invoices, GitHub, and others (editable list)
 - These pass SPF, DKIM, and DMARC because the platform really sent them. The finding tells the analyst to verify the account that triggered the notification, not the platform
 
-### Bulk mail service
+### Bulk mail service and hiring platforms
+
+- Hiring platforms (JobDiva, Oracle Taleo, Workday, Paradox, Newton) and Salesforce Marketing Cloud are recognized too. Their default setups explain several findings that would otherwise look suspicious, such as a Message-ID from the platform, a DKIM signature only by the platform, or a Reply-To that goes back to the employer, so those are reported as informational
+- When the sender's domain publishes `p=none`, the report notes that the domain can be spoofed without being rejected
 
 - Identifies the bulk email service that delivered the message (SendGrid, Mailgun, Amazon SES, Mailchimp/Mandrill, Postmark, SparkPost, Brevo, Constant Contact) from DKIM signatures, relay hostnames, and service-specific headers. Empty leftover headers are ignored, since real scam mail sometimes carries blank headers named after other services.
 - Informational only, since legitimate newsletters use these services too. Its value is the recommended action: the service can suspend the sending account, which is usually more effective than blocking one domain. Verify the abuse contact on the service's website before sending a report.
@@ -72,7 +76,7 @@ With body inspection on, it also checks:
 
 - Platform notifications that link outside the platform (a "Google Groups" invite linking to some other site)
 - The accounts named inside platform notifications (the inviter, the group address), listed as indicators to verify or report
-- Link text that shows one site but goes to another
+- Link text that shows one site but goes to another. Links to the sender's own domain under an old name, and the sender's links rewritten through its mail platform's click tracker, are reported separately at low severity
 - Links to bare IP addresses
 - Lookalike link domains, using the same homoglyph and typo checks as sender domains
 
