@@ -29,7 +29,7 @@ From: Google Groups <noreply@groups.google.com>
 To: victim@gmail.com
 Subject: Invitation to join Start Connecting
 Date: Mon, 19 Oct 2026 10:06:45 -0700
-Message-ID: <UCVBQt9dQfb1LJ-9VEqocw@notifications.google.com>
+Message-ID: <groups-invite-0001@notifications.google.com>
 MIME-Version: 1.0
 """
 
